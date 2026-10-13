@@ -133,3 +133,21 @@ pub fn runtime_libraries(program: &Path) -> Result<serde_json::Map<String,serde_
     }
     Ok(result)
 }
+
+pub fn backend_argument(arg: &str) -> String {
+    // Rust canonical paths use verbatim prefixes; backend URL parsers do not.
+    if let Some(rest)=arg.strip_prefix(r"\\?\UNC\") { format!(r"\\{rest}") }
+    else if let Some(rest)=arg.strip_prefix(r"\\?\") { rest.to_owned() }
+    else { arg.to_owned() }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn backend_paths_preserve_drive_unc_and_unicode() {
+        assert_eq!(backend_argument(r"\\?\C:\a 空格\image.png"),r"C:\a 空格\image.png");
+        assert_eq!(backend_argument(r"\\?\UNC\server\share\image.png"),r"\\server\share\image.png");
+        assert_eq!(backend_argument("-version"),"-version");
+        assert_eq!(backend_argument(r"C:\a\image.png"),r"C:\a\image.png");
+    }
+}

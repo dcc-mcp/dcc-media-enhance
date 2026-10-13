@@ -37,8 +37,8 @@ A cancellation acknowledgement never proves terminal cancellation. Read the fina
 CLI state and manifest. No detached queue or automatic retry of pixel work exists.
 
 Default adapter outer budget is 900 seconds, configurable up to 86400. CLI child
-budgets still apply independently. On adapter cancellation/timeout it terminates
-the CLI supervisor; Unix gets its installed termination handler and Windows gets
+budgets still apply independently. On adapter outer timeout, or cancellation delivered to an in-process Core
+executor, it terminates the CLI supervisor; Unix gets its installed termination handler and Windows gets
 Job Object cleanup. Abrupt host kills on macOS inherit the limitation documented
 in PLATFORMS.md. Never equate a transport timeout with completed media processing.
 
@@ -50,3 +50,11 @@ in PLATFORMS.md. Never equate a transport timeout with completed media processin
 
 Public interface publication, catalog submission, and installation into an actual
 user DCC/gateway are separate actions; this change does none of them.
+
+
+Core 0.20.44's default subprocess script runner does not propagate its cancellation
+token to child Python. Cancelling that Core async task is **not proof** that media
+processing stopped. Use this skill's explicit `cancel` tool with the CLI state
+path, then inspect `status`. The bridge supports Core's in-process `main(**params)`
+execution as well as the default subprocess stdin-JSON path; in-process token
+cancellation is handled cooperatively. No new Core cancellation protocol is added.

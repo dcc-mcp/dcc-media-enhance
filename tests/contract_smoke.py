@@ -8,7 +8,7 @@ import tempfile
 p=argparse.ArgumentParser(); p.add_argument('--binary',required=True,type=Path); args=p.parse_args()
 binary=args.binary.resolve()
 def run(*argv,code=0,env=None):
-    result=subprocess.run([str(binary),*map(str,argv)],capture_output=True,text=True,env=env,timeout=60)
+    result=subprocess.run([str(binary),*map(str,argv)],capture_output=True,text=True, encoding="utf-8",env=env,timeout=60)
     assert result.returncode==code,(result.returncode,result.stdout,result.stderr)
     assert not result.stderr.strip()
     return json.loads(result.stdout)

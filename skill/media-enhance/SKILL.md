@@ -99,3 +99,7 @@ metadata; media `status` / `cancel` continue to reference the CLI state path.
 Outer Core-task cancellation is distinct from a confirmed media terminal state.
 The bridge has an explicit 900-second default outer budget; choose it deliberately
 for longer jobs. Full loader fingerprints and cache reuse are currently Linux-only.
+
+Core's default subprocess runner does not propagate cancellation tokens. Use the
+explicit media `cancel` tool and verify `status`; cancelling a Core task alone
+does not prove pixel work stopped. In-process Core execution can provide a token.

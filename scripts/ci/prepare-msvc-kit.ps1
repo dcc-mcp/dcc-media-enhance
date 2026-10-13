@@ -17,8 +17,8 @@ if (-not $env:RUNNER_TEMP -or -not $env:GITHUB_ENV) {
     throw 'RUNNER_TEMP and GITHUB_ENV are required; this preparation is scoped to one CI job.'
 }
 if (-not $HostArch) { $HostArch = 'x64' }
-if ($HostArch -cnotin @('x64', 'x86')) {
-    throw 'DCC_MEDIA_HOST_ARCH must be x64 or x86 for the x64 target.'
+if ($HostArch -cne 'x64') {
+    throw 'DCC_MEDIA_HOST_ARCH must be x64; this release matrix does not support an x86 host.'
 }
 if ($MsvcVersion -eq '14.0') {
     throw 'VS2015 requires an explicit original installation root and SDK root; this CI preparation only discovers modern VS.'

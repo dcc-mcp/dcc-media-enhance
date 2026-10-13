@@ -5,7 +5,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Pinned msvc-kit doctor failed; no fallback com
 $report | Set-Content -Encoding utf8 msvc-kit-doctor.json
 $data = $report | ConvertFrom-Json
 if ($data.schema -ne 'msvc-kit.doctor.v1' -or $data.status -ne 'passed') { throw 'Unexpected doctor result.' }
-foreach ($stage in @('compile', 'resource', 'link', 'execute')) {
+foreach ($stage in @('compile', 'resource', 'link', 'manifest', 'execute')) {
     $check = @($data.checks | Where-Object { $_.id -eq "probe.$stage" })
     if ($check.Count -ne 1 -or $check[0].status -ne 'passed') { throw "Doctor did not pass probe.$stage" }
 }

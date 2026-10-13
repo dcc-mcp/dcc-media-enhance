@@ -141,7 +141,11 @@ pub fn run(
         .create_new(true)
         .open(log)?;
     let mut cmd = Command::new(program);
-    cmd.args(args)
+    #[cfg(windows)]
+    let native_args: Vec<String> = args.iter().map(|arg| crate::windows::backend_argument(arg)).collect();
+    #[cfg(not(windows))]
+    let native_args=args;
+    cmd.args(native_args)
         .stdin(Stdio::null())
         .stdout(Stdio::from(f.try_clone()?))
         .stderr(Stdio::from(f));
@@ -160,7 +164,9 @@ pub fn run(
     cmd.creation_flags(0x00000004); // CREATE_SUSPENDED: assign Job before running.
     #[cfg(windows)]
     let job=crate::windows::Job::new(limits.memory_mb)?;
-    let mut child=cmd.spawn()?;
+    let child=cmd.spawn()?;
+    #[cfg(windows)]
+    let mut child=child;
     #[cfg(windows)]
     if let Err(e)=job.attach_and_resume(&child) { let _=child.kill(); let _=child.wait(); return Err(e); }
     let mut owned=ChildGuard { child, active:true, #[cfg(windows)] job };
@@ -180,7 +186,15 @@ pub fn run(
             owned.stop(); // Job handle ownership is independent of PID reuse.
             break status;
         }
-        peak = peak.max(owned.rss()?);
+        match owned.rss() {
+            Ok(rss) => peak=peak.max(rss),
+            Err(error) => {
+                // The leader can exit between waitid and libproc sampling.
+                #[cfg(unix)]
+                if exited_unreaped(pid)? { owned.stop(); break owned.child.wait()?; }
+                return Err(error);
+            }
+        }
         if check_cancel(cancel).is_err() {
             failure = Some(Error::new(
                 "CANCELLED",
@@ -320,7 +334,7 @@ pub fn capture_with_cancel(
             .take(2 * 1024 * 1024)
             .read_to_string(&mut text)?;
     }
-    let _ = fs::remove_file(&log);
+    if result.is_ok() { let _ = fs::remove_file(&log); }
     check_cancel(cancel)?;
     result?;
     Ok(text)

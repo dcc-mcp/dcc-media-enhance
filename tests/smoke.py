@@ -32,7 +32,14 @@ def check(label, fn):
         raise
 
 def call(*argv, code=0):
-    proc = subprocess.run([str(binary), *map(str, argv)], capture_output=True, text=True, timeout=120)
+    proc = subprocess.run([str(binary), *map(str, argv)], capture_output=True, text=True, encoding="utf-8", timeout=120)
+    if proc.returncode != code:
+        try:
+            message=json.loads(proc.stdout)['error']['message']
+            log=Path(message.rsplit('bounded diagnostics: ',1)[1])
+            print('Backend diagnostic:',log.read_text(encoding='utf-8',errors='replace')[-4096:])
+        except (KeyError,IndexError,ValueError,OSError):
+            pass
     assert proc.returncode == code, (proc.returncode, proc.stdout, proc.stderr)
     assert not proc.stderr.strip(), proc.stderr
     assert len(proc.stdout.splitlines()) == 1, proc.stdout
@@ -161,7 +168,7 @@ def live_cancel():
     source=work/'cancel-source.ppm'
     source.write_bytes(b'P6\n512 512\n255\n'+bytes([73,107,149])*(512*512))
     request=save('live-cancel.json', job(input=source.name, output='cancelled.png'))
-    proc=subprocess.Popen([str(binary),'run',str(request)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    proc=subprocess.Popen([str(binary),'run',str(request)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True, encoding="utf-8")
     state=work/'cancelled.png.job.json'; deadline=time.monotonic()+60
     while not state.exists() and proc.poll() is None and time.monotonic()<deadline:
         time.sleep(0.002)

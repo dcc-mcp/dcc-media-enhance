@@ -40,6 +40,9 @@ def invoke(command: str, path: str | None = None, timeout_secs: int = 900) -> di
         failure = None
         try:
             while child.poll() is None:
+                # Meaningful only when Core executes this bridge in process and
+                # supplies a token. Default subprocess execution has no token;
+                # callers must use the explicit media cancel tool there.
                 check_cancelled()
                 if time.monotonic() >= deadline:
                     failure = ('Skill invocation exceeded its explicit outer budget.', 'TIMEOUT')
@@ -77,17 +80,23 @@ def invoke(command: str, path: str | None = None, timeout_secs: int = 900) -> di
                 error.get('code', 'BATCH_FAILED'), command=command, exit_code=child.returncode, media=payload)
         return skill_success('Media command completed.', command=command, exit_code=child.returncode, media=payload)
 
-def main(allowed: set[str]) -> None:
+def invoke_checked(allowed: set[str], params: dict) -> dict:
     try:
-        raw = sys.stdin.read(65537)
-        if len(raw) > 65536:
-            raise ValueError('Skill request exceeds 64 KiB')
-        params = json.loads(raw)
         if not isinstance(params, dict) or set(params) - {'command', 'path', 'timeout_secs'}:
             raise ValueError('Unexpected request fields')
         if params.get('command') not in allowed:
             raise ValueError('Command does not belong to this tool')
-        result = invoke(**params)
+        return invoke(**params)
+    except (OSError, ValueError, TypeError) as exc:
+        return skill_error(str(exc), 'INVALID_REQUEST')
+
+
+def cli(allowed: set[str]) -> None:
+    try:
+        raw = sys.stdin.read(65537)
+        if len(raw) > 65536:
+            raise ValueError('Skill request exceeds 64 KiB')
+        result = invoke_checked(allowed, json.loads(raw))
     except (OSError, ValueError, TypeError) as exc:
         result = skill_error(str(exc), 'INVALID_REQUEST')
-    print(json.dumps(result, ensure_ascii=False))
+    print(json.dumps(result))

@@ -20,7 +20,7 @@ if (notices/'licenses').is_dir():shutil.copytree(notices/'licenses',license_dir/
 assert list(license_dir.glob('COPYRIGHT*')),'Missing Rust standard-library copyright notices'
 assert list(license_dir.glob('LICENSE*')),'Missing Rust toolchain license texts'
 sha=hashlib.sha256(binary.read_bytes()).hexdigest()
-metadata=dict(schema_version=1,**v,platform=a.platform,binary=binary.name,binary_sha256=sha,
+metadata=dict(**v,platform=a.platform,binary=binary.name,binary_sha256=sha,
     rustc=subprocess.check_output(['rustc','--version','--verbose'],text=True),runtime=platform.platform(),
     native_tests=['unit_process_tree','real_ffmpeg_smoke','json_contract','lifecycle_lock_cancel','core_skill_bridge'],
     verification_scope='CI native runner only; no end-user hardware or render/OIDN validation on Windows/macOS',

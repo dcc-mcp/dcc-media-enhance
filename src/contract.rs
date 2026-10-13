@@ -178,6 +178,7 @@ pub fn read_json_bounded(path: &Path, max: u64) -> Result<Value> {
     Ok(serde_json::from_str(&s)?)
 }
 pub fn regular_file(path: &Path, max: u64) -> Result<()> {
+    crate::platform::validate_path(path)?;
     let md = fs::symlink_metadata(path)?;
     if !md.is_file() || md.file_type().is_symlink() || md.len() > max {
         return Err(Error::new(

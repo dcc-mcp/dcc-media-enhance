@@ -14,7 +14,7 @@ tools:
     idempotent: true
     execution: sync
     affinity: any
-    source_file: scripts/inspect.py
+    source_file: scripts/inspect_media.py
   - name: execute
     description: Execute an explicit saved media job or serial batch. Creates derivatives and owned sidecars; retains original sources.
     input_schema:

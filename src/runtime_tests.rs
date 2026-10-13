@@ -44,3 +44,14 @@ fn native_rss_and_disk_are_real_observations() {
     assert!(process::disk_free(&dir).unwrap()>0);
     assert!(process::process_identity(std::process::id()).is_some()); fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn native_memory_budget_stops_real_allocation() {
+    let dir=work("memory-limit"); let mut limits=Limits::inspection(); limits.memory_mb=64;
+    let err=process::run(fixture(),&["memory".into()],&limits,&dir.join("log"),None,None).unwrap_err();
+    // Windows hard commit caps can reject allocation before RSS crosses budget.
+    // That native allocation failure is a backend failure, not a false RSS claim.
+    assert!(err.code=="MEMORY_LIMIT" || (cfg!(windows) && err.code=="BACKEND_FAILED"
+        && fs::read_to_string(dir.join("log")).unwrap().contains("fixture_allocation_denied")),"{err:?}");
+    fs::remove_dir_all(dir).unwrap();
+}

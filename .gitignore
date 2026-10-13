@@ -1,0 +1,5 @@
+/target/
+/evidence/local/
+*.partial.*
+*.lock-owner
+__pycache__/

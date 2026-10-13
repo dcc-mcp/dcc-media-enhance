@@ -1,0 +1,55 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  linux-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install CPU test backend from Ubuntu packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg
+      - name: Optimized unit tests
+        run: cargo test --locked --release
+      - name: Build optimized CLI
+        run: cargo build --locked --release
+      - name: Installed CPU backend smoke tests
+        run: |
+          command -v ffmpeg
+          command -v ffprobe
+          python3 tests/smoke.py --binary "$PWD/target/release/dcc-media-enhance"
+      - name: Cache and cancellation safety regressions
+        run: python3 tests/risk_smoke.py --binary "$PWD/target/release/dcc-media-enhance"
+      - name: Prepare tested Linux preview artifact
+        run: |
+          mkdir -p target/linux-preview
+          cp target/release/dcc-media-enhance LICENSE THIRD_PARTY_NOTICES.md Cargo.lock target/linux-preview/
+          printf 'cargo_profile=release\nsource_commit=%s\n' "$GITHUB_SHA" > target/linux-preview/build-runtime.txt
+          rustc --version --verbose >> target/linux-preview/build-runtime.txt
+          ldd --version | head -n 1 >> target/linux-preview/build-runtime.txt
+          (cd target/linux-preview && sha256sum dcc-media-enhance > SHA256SUMS)
+          SYSROOT="$(rustc --print sysroot)"
+          for NAME in COPYRIGHT-library.html COPYRIGHT.html LICENSE-APACHE LICENSE-MIT; do
+            if test -f "$SYSROOT/share/doc/rust/$NAME"; then
+              cp "$SYSROOT/share/doc/rust/$NAME" target/linux-preview/
+            fi
+          done
+          if test -d "$SYSROOT/share/doc/rust/licenses"; then
+            cp -R "$SYSROOT/share/doc/rust/licenses" target/linux-preview/rust-licenses
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64-tested-preview
+          path: target/linux-preview/
+          if-no-files-found: error
+          retention-days: 3

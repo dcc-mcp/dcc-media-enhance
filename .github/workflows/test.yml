@@ -1,16 +1,26 @@
 name: test
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 permissions:
   contents: read
 jobs:
   linux-cpu:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CARGO_BUILD_JOBS: 2
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install CPU test backend from Ubuntu packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg
       - name: Unit tests
         run: cargo test --locked
-        env:
-          CARGO_BUILD_JOBS: 2
       - name: Build CLI
         run: cargo build --locked
       - name: Installed CPU backend smoke tests

@@ -28,3 +28,5 @@ jobs:
           command -v ffmpeg
           command -v ffprobe
           python3 tests/smoke.py --binary "$PWD/target/debug/dcc-media-enhance"
+      - name: Cache and cancellation safety regressions
+        run: python3 tests/risk_smoke.py --binary "$PWD/target/debug/dcc-media-enhance"

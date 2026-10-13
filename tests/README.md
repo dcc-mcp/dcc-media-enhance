@@ -25,3 +25,16 @@ This helper caps the source at 8 MiB/16,384 pixels, verifies source SHA-256,
 checks a decoded linear float32 RGBA EXR result, and retains its report. It does not
 open a production scene or trigger a re-render. No source EXR is redistributed in
 this repository.
+
+Reviewed failure-boundary regressions:
+
+```sh
+python3 tests/risk_smoke.py --binary /absolute/path/to/dcc-media-enhance
+```
+
+These use original 8x8 pixels and real installed FFmpeg for success/cache tests.
+They reject incomplete manifests, relocated cache provenance, dangling foreign
+sidecars and disguised ffconcat input. The cancellation test deliberately
+interposes one local sleeping ffprobe fixture after real enhancement to prove
+verification cancellation stops a batch. That fixture is not described as a real
+probe or media-quality test. No renderer, models or network are used.

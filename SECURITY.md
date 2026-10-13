@@ -23,3 +23,12 @@ proves an accepted output; incomplete publication must be inspected, not trusted
 The optional waifu2x test package is obtained from its official release, checksum
 verified and locally extracted. It is not included in the source distribution.
 Any future bundled backend/weight needs an independent supply-chain/license audit.
+
+All input probes/decode commands restrict demuxers and input protocols. This
+single-file contract intentionally excludes playlists and referenced-file
+sequences; filenames alone do not select trusted media formats. Cache manifests
+are local provenance records, not authenticated signatures against a malicious
+writer. Use caller-authorized private directories; a party able to rewrite source
+files, backend binaries, directory entries or manifests is outside this CLI's
+isolation boundary. No-clobber output does not claim adversarial shared-directory
+TOCTOU protection.

@@ -188,6 +188,13 @@ pub fn regular_file(path: &Path, max: u64) -> Result<()> {
     }
     Ok(())
 }
+pub fn path_exists(path: &Path) -> Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
 pub fn resolve(base: &Path, path: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()

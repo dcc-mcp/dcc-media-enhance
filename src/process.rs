@@ -101,7 +101,8 @@ fn group_rss(group: i32) -> u64 {
 }
 
 pub fn check_cancel(cancel: Option<&Path>) -> Result<()> {
-    if INTERRUPTED.load(Ordering::SeqCst) || cancel.is_some_and(Path::exists) {
+    if INTERRUPTED.load(Ordering::SeqCst) || cancel.is_some_and(|p| fs::symlink_metadata(p).is_ok())
+    {
         return Err(Error::new(
             "CANCELLED",
             "Operation cancelled; source was not changed",
@@ -188,7 +189,7 @@ pub fn run(
             break child.wait()?;
         }
         peak = peak.max(group_rss(pid));
-        if INTERRUPTED.load(Ordering::SeqCst) || cancel.is_some_and(Path::exists) {
+        if check_cancel(cancel).is_err() {
             failure = Some(Error::new(
                 "CANCELLED",
                 "Operation cancelled; source was not changed",
@@ -355,12 +356,20 @@ pub fn runtime_fingerprint(program: &Path) -> Result<serde_json::Value> {
 }
 
 pub fn capture(program: &Path, args: &[String]) -> Result<String> {
+    capture_with_cancel(program, args, None)
+}
+
+pub fn capture_with_cancel(
+    program: &Path,
+    args: &[String],
+    cancel: Option<&Path>,
+) -> Result<String> {
     let log = std::env::temp_dir().join(format!(
         "dcc-media-probe-{}-{}.log",
         std::process::id(),
         crate::contract::now_ms()
     ));
-    let result = run(program, args, &Limits::inspection(), &log, None, None);
+    let result = run(program, args, &Limits::inspection(), &log, None, cancel);
     let mut text = String::new();
     if result.is_ok() {
         fs::File::open(&log)?
@@ -368,6 +377,7 @@ pub fn capture(program: &Path, args: &[String]) -> Result<String> {
             .read_to_string(&mut text)?;
     }
     let _ = fs::remove_file(&log);
+    check_cancel(cancel)?;
     result?;
     Ok(text)
 }

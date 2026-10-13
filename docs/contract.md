@@ -115,3 +115,24 @@ Cluster portability is a job-data boundary, not a tested distributed locking or
 cross-machine bit-exact cache guarantee. Use isolated, authorized input/output
 locations and a scheduler-compatible filesystem. Local no-clobber links/flocks
 must be validated on any proposed shared filesystem before concurrent deployment.
+
+## Reviewed recovery boundaries
+
+Cache reuse requires a complete versioned success manifest: request and resolved
+source/output paths, source/backend/runtime/model identities, output hash, resource
+receipt, and all required verification/provenance fields must match. A copied job
+folder is not an automatic cross-location cache migration. Missing or altered
+manifest fields cause a no-clobber conflict, never a partial success response.
+
+Existing sidecars are checked with symlink metadata, including dangling links.
+Foreign links are rejected unchanged. Cancellation sentinels propagate through
+all output verification probes; a cancelled batch does not continue later jobs.
+
+Source identity covers a single self-contained file. FFmpeg and FFprobe accept
+only explicit raster-pipe and leaf video demuxers, with file-only input protocols.
+Playlists, image sequences, concat/HLS/DASH and implicit network inputs are rejected
+even if renamed to an image extension. MOV external tracks and absolute data
+references are explicitly disabled. Convert referenced inputs in a separate,
+authorized ingestion step before submitting a self-contained file. See FFmpeg's
+[format options](https://ffmpeg.org/ffmpeg-formats.html) and
+[protocol controls](https://ffmpeg.org/ffmpeg-protocols.html).

@@ -13,6 +13,7 @@ use std::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Media {
+    pub format_name: String,
     pub width: u64,
     pub height: u64,
     pub pixel_format: String,
@@ -28,7 +29,36 @@ pub struct Media {
     pub rotation_degrees: f64,
     pub unsupported_streams: usize,
 }
+// Source identity covers one retained file only. Never admit playlist/sequence
+// demuxers or network protocols whose referenced inputs evade that identity.
+const INPUT_FORMATS: &str = "png_pipe,jpeg_pipe,webp_pipe,ppm_pipe,pgm_pipe,bmp_pipe,tiff_pipe,exr_pipe,mov,matroska,webm,avi,mpegts,mpeg,ogg";
+fn file_input_options() -> Vec<String> {
+    [
+        "-protocol_whitelist",
+        "file",
+        "-format_whitelist",
+        INPUT_FORMATS,
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
+}
+fn probe_input_options() -> Vec<String> {
+    let mut args = file_input_options();
+    // ffprobe accepts demuxer options across formats. ffmpeg only accepts these
+    // for MOV, where execute() selects them using the actually probed format.
+    args.extend(
+        ["-enable_drefs", "0", "-use_absolute_path", "0"]
+            .iter()
+            .map(|s| s.to_string()),
+    );
+    args
+}
 fn media(path: &Path, count: bool) -> Result<Media> {
+    media_with_cancel(path, count, None)
+}
+fn media_with_cancel(path: &Path, count: bool, cancel: Option<&Path>) -> Result<Media> {
+    process::check_cancel(cancel)?;
     contract::regular_file(path, u64::MAX)?;
     // FFprobe cannot decode Blender's multilayer named-channel files. Do not
     // silently accept its 0x0 stream. The initial EXR probe is explicitly header-only.
@@ -51,8 +81,9 @@ fn media(path: &Path, count: bool) -> Result<Media> {
     if count {
         args.push("-count_frames".into());
     }
+    args.extend(probe_input_options());
     args.push(path.to_string_lossy().into_owned());
-    let d: Value = serde_json::from_str(&process::capture(&exe, &args)?)?;
+    let d: Value = serde_json::from_str(&process::capture_with_cancel(&exe, &args, cancel)?)?;
     let streams = d["streams"]
         .as_array()
         .ok_or_else(|| Error::new("INVALID_MEDIA", "No readable media streams", 2))?;
@@ -64,6 +95,7 @@ fn media(path: &Path, count: bool) -> Result<Media> {
         .first()
         .ok_or_else(|| Error::new("INVALID_MEDIA", "No video or image stream", 2))?;
     Ok(Media {
+        format_name: d["format"]["format_name"].as_str().unwrap_or("").into(),
         width: v["width"].as_u64().unwrap_or(0),
         height: v["height"].as_u64().unwrap_or(0),
         pixel_format: v["pix_fmt"].as_str().unwrap_or("").into(),
@@ -183,6 +215,7 @@ fn exr_header(path: &Path) -> Result<Media> {
         return Err(invalid());
     }
     Ok(Media {
+        format_name: "exr".into(),
         width: d[2] as u64 + 1,
         height: d[3] as u64 + 1,
         pixel_format: "exr_channels_not_decoded".into(),
@@ -517,7 +550,7 @@ pub fn plan(job: &Job, base: &Path) -> Result<Plan> {
     }
     let runtime_fingerprint = process::runtime_fingerprint(&executable)?;
     let cache_key = contract::hash_bytes(&serde_json::to_vec(
-        &json!({"job":job,"source":source_sha256,"backend":backend,"binary":executable_sha256,"runtime":runtime_fingerprint,"models":models,"helper":contract::hash_bytes(include_bytes!("../backend/blender_denoise.py")),"engine":contract::hash_bytes(include_bytes!("engine.rs")),"runner":contract::hash_bytes(include_bytes!("process.rs")),"contract":contract::hash_bytes(include_bytes!("contract.rs")),"cli":contract::hash_bytes(include_bytes!("main.rs")),"version":env!("CARGO_PKG_VERSION")}),
+        &json!({"job":job,"resolved_input":input,"resolved_output":output,"source":source_sha256,"backend":backend,"binary":executable_sha256,"runtime":runtime_fingerprint,"models":models,"helper":contract::hash_bytes(include_bytes!("../backend/blender_denoise.py")),"engine":contract::hash_bytes(include_bytes!("engine.rs")),"runner":contract::hash_bytes(include_bytes!("process.rs")),"contract":contract::hash_bytes(include_bytes!("contract.rs")),"cli":contract::hash_bytes(include_bytes!("main.rs")),"version":env!("CARGO_PKG_VERSION")}),
     )?);
     Ok(Plan {
         schema_version: 1,
@@ -618,19 +651,80 @@ struct CancelCleanup {
 }
 impl Drop for CancelCleanup {
     fn drop(&mut self) {
-        if fs::read_to_string(&self.path).ok().as_deref() == Some(&self.id) {
+        if contract::regular_file(&self.path, 256).is_ok()
+            && fs::read_to_string(&self.path).ok().as_deref() == Some(&self.id)
+        {
             let _ = fs::remove_file(&self.path);
         }
     }
 }
 
+fn complete_cached_manifest(m: &Value, p: &Plan, job: &Job) -> bool {
+    let Ok(out) = serde_json::from_value::<Media>(m["output_media"].clone()) else {
+        return false;
+    };
+    let receipt = &m["resource_receipt"];
+    let video = &m["verification"]["video"];
+    let video_valid = if job.media == "video" {
+        [
+            "frame_count_equal",
+            "audio_codec_sequence_equal",
+            "relative_frame_timestamps_equal",
+            "audio_packet_sha256_equal",
+            "audio_extradata_equal",
+            "audio_packet_side_data_equal",
+            "audio_relative_timestamps_equal",
+        ]
+        .iter()
+        .all(|k| video[k] == true)
+            && video["timestamp_tolerance_seconds"] == 0.0011
+            && video["absolute_origin"] == "normalized"
+    } else {
+        video.is_null() && out.frames == Some(1)
+    };
+    m["schema_version"] == 1
+        && m["success"] == true
+        && m["status"] == "completed"
+        && m["cache_key"] == p.cache_key
+        && m["cache_hit"].is_boolean()
+        && m["job_id"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty() && s.len() <= 128)
+        && m["input"] == json!(p.input)
+        && m["output"] == json!(p.output)
+        && m["request"] == json!(job)
+        && m["source_sha256"] == p.source_sha256
+        && m["source_unchanged"] == true
+        && m["backend"]["id"] == p.backend
+        && m["backend"]["binary"] == json!(p.executable)
+        && m["backend"]["sha256"] == p.executable_sha256
+        && m["backend"]["runtime"] == p.runtime_fingerprint
+        && m["backend"]["model_hashes"] == p.model_hashes
+        && m["warnings"] == json!(p.warnings)
+        && m["cache_scope"].is_string()
+        && receipt["elapsed_ms"].as_u64().is_some()
+        && receipt["sampled_peak_rss_kib"].as_u64().is_some()
+        && receipt["exit_code"] == 0
+        && receipt["memory_enforcement"] == "sampled_process_group_watchdog_not_hard_limit"
+        && out.width == p.expected_width
+        && out.height == p.expected_height
+        && out.frames.is_some_and(|n| n > 0)
+        && out.video_streams == 1
+        && m["verification"]["pixel_decode"] == true
+        && m["verification"]["dimensions"] == true
+        && m["verification"]["quality_reference"] == "not_run"
+        && m["verification"]["visual_review"] == "not_run"
+        && video_valid
+        && m["provenance"]["kind"] == "enhanced_derivative"
+        && m["provenance"]["factual_detail_restoration_guaranteed"] == false
+}
+
 pub fn run(job: &Job, base: &Path) -> Result<Value> {
     let p = plan(job, base)?;
     let manifest = contract::suffix(&p.output, ".manifest.json");
-    if p.output.exists() {
+    if contract::path_exists(&p.output)? {
         if let Ok(m) = contract::read_json_bounded(&manifest, 1_048_576) {
-            if m["cache_key"] == p.cache_key
-                && m["status"] == "completed"
+            if complete_cached_manifest(&m, &p, job)
                 && m["output_sha256"] == contract::hash_file(&p.output)?
             {
                 let mut hit = m;
@@ -644,7 +738,7 @@ pub fn run(job: &Job, base: &Path) -> Result<Value> {
             2,
         ));
     }
-    if manifest.exists() {
+    if contract::path_exists(&manifest)? {
         return Err(Error::new(
             "MANIFEST_EXISTS",
             "An output manifest already exists; do not overwrite it",
@@ -662,7 +756,7 @@ pub fn run(job: &Job, base: &Path) -> Result<Value> {
     let log = work.join("backend.log");
     let state = contract::suffix(&p.output, ".job.json");
     let cancel = state.with_extension("cancel");
-    if state.exists() {
+    if contract::path_exists(&state)? {
         let previous = contract::read_json_bounded(&state, 1_048_576)?;
         if previous["tool"] != "dcc-media-enhance" {
             return Err(Error::new(
@@ -671,13 +765,14 @@ pub fn run(job: &Job, base: &Path) -> Result<Value> {
                 3,
             ));
         }
-        if cancel.exists()
+        if contract::path_exists(&cancel)?
+            && contract::regular_file(&cancel, 256).is_ok()
             && fs::read_to_string(&cancel).ok().as_deref() == previous["job_id"].as_str()
         {
             fs::remove_file(&cancel)?;
         }
     }
-    if cancel.exists() {
+    if contract::path_exists(&cancel)? {
         return Err(Error::new(
             "STALE_CANCEL",
             "Unrecognized cancellation sentinel; do not overwrite it",
@@ -735,12 +830,23 @@ pub fn run(job: &Job, base: &Path) -> Result<Value> {
             if contract::write_json(&state,&json!({"tool":"dcc-media-enhance","schema_version":1,"job_id":id,"status":"completed","manifest":manifest,"output":p.output})).is_err(){result["state_update_warning"]=json!("Manifest committed; advisory state refresh failed");}
             Ok(result)
         }
-        Err(e) => {
+        Err(mut e) => {
+            if let Err(cancelled) = process::check_cancel(Some(&cancel)) {
+                e = cancelled;
+            }
             let _ = fs::remove_file(&staging);
-            contract::write_json(
+            if let Err(state_error) = contract::write_json(
                 &state,
                 &json!({"tool":"dcc-media-enhance","schema_version":1,"job_id":id,"status":if e.code=="CANCELLED"{"cancelled"}else{"failed"},"error":{"code":e.code,"message":e.message},"diagnostic_log":log,"source_unchanged":contract::hash_file(&p.input).ok().map(|sha|sha==p.source_sha256)}),
-            )?;
+            ) {
+                // Preserve the primary cancellation/resource failure. In
+                // particular a failed advisory state write must not let a
+                // cancelled batch continue to its next job.
+                e.message.push_str(&format!(
+                    "; advisory state update failed: {}",
+                    state_error.message
+                ));
+            }
             Err(e)
         }
     }
@@ -811,6 +917,14 @@ fn execute(
         if job.media == "video" {
             a.extend(["-copyts".into(), "-start_at_zero".into()]);
         }
+        a.extend(file_input_options());
+        if p.media.format_name.split(',').any(|f| f == "mov") {
+            a.extend(
+                ["-enable_drefs", "0", "-use_absolute_path", "0"]
+                    .iter()
+                    .map(|s| s.to_string()),
+            );
+        }
         a.extend(["-i".into(), s(&p.input), "-map".into(), "0:v:0".into()]);
         if job.media == "video" {
             a.extend([
@@ -872,7 +986,7 @@ fn execute(
         Some(cancel),
     )?;
     contract::regular_file(staging, job.limits.max_output_mb * 1024 * 1024)?;
-    let out = media(staging, true)?;
+    let out = media_with_cancel(staging, true, Some(cancel))?;
     if out.width != p.expected_width || out.height != p.expected_height {
         return Err(Error::new(
             "VERIFY_DIMENSIONS",
@@ -889,7 +1003,7 @@ fn execute(
     }
     let mut video_verification = json!(null);
     if job.media == "video" {
-        let original = media(&p.input, true)?;
+        let original = media_with_cancel(&p.input, true, Some(cancel))?;
         if original.frames.is_none()
             || original.frames != out.frames
             || original.audio_codecs != out.audio_codecs
@@ -901,11 +1015,12 @@ fn execute(
                 3,
             ));
         }
-        video_verification = verify_video(&p.input, staging, original.audio_codecs.len())?;
+        video_verification =
+            verify_video(&p.input, staging, original.audio_codecs.len(), Some(cancel))?;
     }
     // Full decode with error promotion; header checks alone are not sufficient.
     let ffmpeg = process::executable("ffmpeg")?;
-    let decode_args = vec![
+    let mut decode_args = vec![
         "-hide_banner".into(),
         "-loglevel".into(),
         "error".into(),
@@ -913,6 +1028,9 @@ fn execute(
         "-nostdin".into(),
         "-threads".into(),
         "1".into(),
+    ];
+    decode_args.extend(file_input_options());
+    decode_args.extend([
         "-i".into(),
         s(staging),
         "-map".into(),
@@ -922,7 +1040,7 @@ fn execute(
         "-f".into(),
         "null".into(),
         "-".into(),
-    ];
+    ]);
     process::run(
         &ffmpeg,
         &decode_args,
@@ -987,7 +1105,7 @@ fn execute(
     )
 }
 
-fn video_timing(path: &Path) -> Result<Vec<f64>> {
+fn video_timing(path: &Path, cancel: Option<&Path>) -> Result<Vec<f64>> {
     let ffprobe = process::executable("ffprobe")?;
     let args = [
         "-v",
@@ -1004,9 +1122,10 @@ fn video_timing(path: &Path) -> Result<Vec<f64>> {
     ]
     .iter()
     .map(|x| x.to_string())
+    .chain(probe_input_options())
     .chain([path.to_string_lossy().into_owned()])
     .collect::<Vec<_>>();
-    let v: Value = serde_json::from_str(&process::capture(&ffprobe, &args)?)?;
+    let v: Value = serde_json::from_str(&process::capture_with_cancel(&ffprobe, &args, cancel)?)?;
     v["frames"]
         .as_array()
         .ok_or_else(|| Error::new("VERIFY_TIMING", "No frame timestamps", 3))?
@@ -1020,7 +1139,11 @@ fn video_timing(path: &Path) -> Result<Vec<f64>> {
         })
         .collect()
 }
-fn audio_packets(path: &Path, index: usize) -> Result<Vec<(f64, String, Value)>> {
+fn audio_packets(
+    path: &Path,
+    index: usize,
+    cancel: Option<&Path>,
+) -> Result<Vec<(f64, String, Value)>> {
     let ffprobe = process::executable("ffprobe")?;
     let args = [
         "-v",
@@ -1039,9 +1162,10 @@ fn audio_packets(path: &Path, index: usize) -> Result<Vec<(f64, String, Value)>>
     ]
     .iter()
     .map(|x| x.to_string())
+    .chain(probe_input_options())
     .chain([path.to_string_lossy().into_owned()])
     .collect::<Vec<_>>();
-    let v: Value = serde_json::from_str(&process::capture(&ffprobe, &args)?)?;
+    let v: Value = serde_json::from_str(&process::capture_with_cancel(&ffprobe, &args, cancel)?)?;
     v["packets"]
         .as_array()
         .ok_or_else(|| Error::new("VERIFY_AUDIO", "No audio packet list", 3))?
@@ -1073,9 +1197,14 @@ fn audio_packets(path: &Path, index: usize) -> Result<Vec<(f64, String, Value)>>
         })
         .collect()
 }
-fn verify_video(input: &Path, output: &Path, audio_count: usize) -> Result<Value> {
-    let a = video_timing(input)?;
-    let b = video_timing(output)?;
+fn verify_video(
+    input: &Path,
+    output: &Path,
+    audio_count: usize,
+    cancel: Option<&Path>,
+) -> Result<Value> {
+    let a = video_timing(input, cancel)?;
+    let b = video_timing(output, cancel)?;
     if a.is_empty() || a.len() != b.len() {
         return Err(Error::new(
             "VERIFY_TIMING",
@@ -1095,8 +1224,8 @@ fn verify_video(input: &Path, output: &Path, audio_count: usize) -> Result<Value
         ));
     }
     for index in 0..audio_count {
-        let x = audio_packets(input, index)?;
-        let y = audio_packets(output, index)?;
+        let x = audio_packets(input, index, cancel)?;
+        let y = audio_packets(output, index, cancel)?;
         if x.len() != y.len()
             || x.iter().zip(&y).any(|((xt, xh, xs), (yt, yh, ys))| {
                 xh != yh || xs != ys || ((xt - a[0]) - (yt - b[0])).abs() > tolerance

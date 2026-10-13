@@ -94,6 +94,7 @@
       "gateway_stats_recorded": true
     }
   ],
+  "success": true,
   "cli_version": "dcc-mcp-cli 0.20.44",
   "wire_annotations_verified": true,
   "resize": {
@@ -115,16 +116,17 @@
     "native_exit_code": 5,
     "core_poll_cli_exit_code": 1
   },
-  "success": true,
   "cleanup": {
-    "all_owned_processes_stopped": true,
+    "gateway_host_processes_stopped": true,
     "exit_codes": [
       0,
       0
     ],
-    "listeners_closed": true
+    "listeners_closed": true,
+    "native_cancel_job_terminal_state": "cancelled",
+    "errors": []
   },
+  "test_source_sha256": "bf5e40b995cc1c50d8d957076c417436d28f0e2a97d6a21136e7a2611aaca8bc",
   "skill_tools_sha256": "fb377ef4d5797049563ec8e26faf1802c1a43daee9e651428b524dc1680cc5f2",
-  "test_source_sha256": "64d31f1953e2ad369cd3ceb0a6fa049f45c5f2942d98d870b0a99d8efd2fd64c",
   "date_utc": "2026-10-13"
 }

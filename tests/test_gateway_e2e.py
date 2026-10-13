@@ -40,19 +40,89 @@ finally: h.shutdown()
 '''
 
 
+def cleanup_owned(children, logs, binary, state, submitted, env, ports):
+    """Best-effort independent teardown; any failure makes acceptance fail closed."""
+    errors=[]
+    native_terminal=None
+    try:
+        if submitted and not state.exists():
+            until=time.monotonic()+5
+            while not state.exists() and time.monotonic()<until:time.sleep(.05)
+        if state.exists():
+            try:
+                subprocess.run([str(binary),'cancel',str(state)],env=env,capture_output=True,timeout=5,check=True)
+            except (OSError,subprocess.SubprocessError) as error:
+                errors.append('native cancel: '+type(error).__name__)
+            until=time.monotonic()+5
+            while time.monotonic()<until:
+                try:native_terminal=json.loads(state.read_text()).get('status')
+                except (OSError,ValueError):native_terminal=None
+                if native_terminal in {'completed','failed','cancelled'}:break
+                time.sleep(.05)
+        if submitted and native_terminal not in {'completed','failed','cancelled'}:
+            errors.append('native terminal state not established')
+    except Exception as error:
+        errors.append('native cleanup: '+type(error).__name__)
+    finally:
+        # A cancellation or one child failure must not skip another owner.
+        for child in reversed(children):
+            try:
+                if child.poll() is None:child.terminate()
+            except OSError as error:errors.append('terminate: '+type(error).__name__)
+        for child in reversed(children):
+            try:child.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                try:child.kill();child.wait(timeout=5)
+                except (OSError,subprocess.SubprocessError) as error:errors.append('kill/wait: '+type(error).__name__)
+            except OSError as error:errors.append('wait: '+type(error).__name__)
+        for log in logs:
+            try:log.close()
+            except OSError as error:errors.append('log close: '+type(error).__name__)
+    closed=[]
+    for port in ports:
+        if port is None:continue
+        try:
+            with socket.create_connection(('127.0.0.1',port),timeout=.3):closed.append(False)
+        except OSError:closed.append(True)
+    return {'gateway_host_processes_stopped':all(c.poll() is not None for c in children),
+            'exit_codes':[c.returncode for c in children], 'listeners_closed':all(closed),
+            'native_cancel_job_terminal_state':native_terminal, 'errors':errors}
+
+
+def test_cleanup_failures():
+    """No processes or listeners: inject native-cancel failures into real teardown."""
+    import io
+    from unittest.mock import patch
+    class Child:
+        def __init__(self):self.returncode=None;self.terminated=False;self.waited=False
+        def poll(self):return self.returncode
+        def terminate(self):self.terminated=True
+        def wait(self,timeout):self.waited=True;self.returncode=0
+    with tempfile.TemporaryDirectory() as temporary:
+        state=Path(temporary)/'job.json';state.write_text('{"status":"cancelled"}')
+        for failure in (subprocess.TimeoutExpired('cancel',5),OSError('injected')):
+            children=[Child(),Child()];log=io.StringIO()
+            with patch('subprocess.run',side_effect=failure),patch('socket.create_connection',side_effect=OSError):
+                receipt=cleanup_owned(children,[log],Path('/unused'),state,True,{},[1,2])
+            assert all(c.terminated and c.waited for c in children) and log.closed
+            assert receipt['gateway_host_processes_stopped'] and receipt['listeners_closed']
+            assert receipt['native_cancel_job_terminal_state']=='cancelled' and receipt['errors']
+
+
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--binary',required=True,type=Path)
     parser.add_argument('--cli',type=Path,default=shutil.which('dcc-mcp-cli'))
     parser.add_argument('--report',type=Path)
     args=parser.parse_args()
+    test_cleanup_failures()
     assert sys.platform.startswith('linux'), 'This wire acceptance currently targets Linux only'
     assert args.cli, 'Install the explicitly pinned dcc-mcp-cli before this test'
     assert importlib.metadata.version('dcc-mcp-core')=='0.20.44'
     binary=args.binary.resolve(); cli=Path(args.cli).resolve()
     skill=Path(__file__).resolve().parents[1]/'skill'
     report={'core_version':'0.20.44','native_binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),
-            'scope':'Linux isolated loopback gateway; real CLI/SDK/FFmpeg; no deployed user host', 'calls':[]}
+            'scope':'Linux isolated loopback gateway; real CLI/SDK/FFmpeg; no deployed user host', 'calls':[], 'success':False}
     with tempfile.TemporaryDirectory(prefix='media-gateway-e2e-') as temporary:
         root=Path(temporary)
         env=dict({k:v for k,v in os.environ.items() if not k.startswith(('DCC_MCP_','DCC_MEDIA_','MEDIA_E2E_'))},PYTHONDONTWRITEBYTECODE='1',DCC_MCP_DISABLE_UPDATE_CHECK='1',
@@ -102,6 +172,7 @@ def main():
                     return json.load(response).get('service')=='dcc-mcp-gateway'
             except OSError:return False
 
+        completed=False
         try:
             start([str(cli),'gateway','--host','127.0.0.1','--port',str(port),'--remote-port','0',
                    '--registry-dir',str(root/'registry'),'--no-admin','true','--gateway-idle-timeout-secs','120'],'gateway')
@@ -186,33 +257,15 @@ def main():
             report['cancellation']={'native_status':'cancelled','core_status':core_result['status'],
                                     'no_output':True,'source_retained':True,'explicit_media_cancel':True,
                                     'media_error':'CANCELLED','native_exit_code':5,'core_poll_cli_exit_code':report['calls'][-1]['exit_code']}
-            report['success']=True
+            completed=True
         finally:
-            # Even a failing assertion must not leave our bounded media work or
-            # listeners behind. This direct native command is cleanup only.
-            if submitted_cancel_job and not cancel_state.exists():
-                until=time.monotonic()+5
-                while not cancel_state.exists() and time.monotonic()<until:time.sleep(.05)
-            if cancel_state.exists():
-                subprocess.run([str(binary),'cancel',str(cancel_state)],env=env,capture_output=True,timeout=5)
-            for child in reversed(children):
-                if child.poll() is None:child.terminate()
-            for child in reversed(children):
-                try:child.wait(timeout=10)
-                except subprocess.TimeoutExpired:child.kill();child.wait()
-            for log in logs:log.close()
-            closed=[]
-            for owned_port in [port,host_port]:
-                if owned_port is None:continue
-                try:
-                    with socket.create_connection(('127.0.0.1',owned_port),timeout=.3):closed.append(False)
-                except OSError:closed.append(True)
-            report['cleanup']={'all_owned_processes_stopped':all(c.poll() is not None for c in children),
-                               'exit_codes':[c.returncode for c in children],'listeners_closed':all(closed)}
+            report['cleanup']=cleanup_owned(children,logs,binary,cancel_state,submitted_cancel_job,env,[port,host_port])
+            clean=report['cleanup']
+            report['success']=completed and clean['gateway_host_processes_stopped'] and clean['listeners_closed'] and not clean['errors']
             if args.report:
                 args.report.parent.mkdir(parents=True,exist_ok=True)
                 args.report.write_text(json.dumps(report,indent=2)+'\n')
-            assert report['cleanup']['all_owned_processes_stopped'] and report['cleanup']['listeners_closed']
+            assert clean['gateway_host_processes_stopped'] and clean['listeners_closed'] and not clean['errors'],clean
     print(json.dumps(report))
 
 

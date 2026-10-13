@@ -1,0 +1,50 @@
+tools:
+  - name: inspect
+    description: Discover capabilities, inspect media, plan a saved job, or read its owned state.
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [command]
+      properties:
+        command: {type: string, enum: [capabilities, doctor, schema, probe, plan, status]}
+        path: {type: string, description: Absolute input/job/state path; omit for capabilities, doctor and schema.}
+        timeout_secs: {type: integer, minimum: 1, maximum: 86400, default: 900}
+    read_only: true
+    destructive: false
+    idempotent: true
+    execution: sync
+    affinity: any
+    source_file: scripts/inspect_media.py
+  - name: execute
+    description: Execute an explicit saved media job or serial batch. Creates derivatives and owned sidecars; retains original sources.
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [command, path]
+      properties:
+        command: {type: string, enum: [run, batch]}
+        path: {type: string, description: Absolute path to an existing versioned job or batch JSON.}
+        timeout_secs: {type: integer, minimum: 1, maximum: 86400, default: 900}
+    read_only: false
+    destructive: false
+    idempotent: false
+    execution: async
+    affinity: any
+    timeout_hint_secs: 900
+    source_file: scripts/execute.py
+  - name: cancel
+    description: Request cooperative cancellation via a CLI-owned job state; inspect final status to verify it stopped.
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [command, path]
+      properties:
+        command: {type: string, enum: [cancel]}
+        path: {type: string, description: Absolute path to the CLI-owned job state JSON.}
+        timeout_secs: {type: integer, minimum: 1, maximum: 86400, default: 900}
+    read_only: false
+    destructive: false
+    idempotent: true
+    execution: sync
+    affinity: any
+    source_file: scripts/cancel.py

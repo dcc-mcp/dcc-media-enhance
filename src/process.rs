@@ -376,7 +376,7 @@ pub fn capture_with_cancel(
             .take(2 * 1024 * 1024)
             .read_to_string(&mut text)?;
     }
-    let _ = fs::remove_file(&log);
+    if result.is_ok() { let _ = fs::remove_file(&log); }
     check_cancel(cancel)?;
     result?;
     Ok(text)
@@ -467,3 +467,6 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 }
+
+pub fn memory_enforcement() -> &'static str { "sampled_process_group_watchdog_not_hard_limit" }
+pub fn cache_reuse_supported() -> bool { true }

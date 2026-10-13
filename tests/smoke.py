@@ -18,8 +18,9 @@ parser.add_argument('--binary', required=True, type=Path)
 parser.add_argument('--work-parent', type=Path, default=Path(tempfile.gettempdir()))
 args = parser.parse_args()
 binary = args.binary.resolve()
-work = Path(tempfile.mkdtemp(prefix='dcc-media-smoke-', dir=args.work_parent))
+work = Path(tempfile.mkdtemp(prefix='dcc media 空格-', dir=args.work_parent))
 results = []
+cache_supported = os.name != 'nt' and __import__('sys').platform.startswith('linux')
 
 def check(label, fn):
     started = time.monotonic()
@@ -31,7 +32,14 @@ def check(label, fn):
         raise
 
 def call(*argv, code=0):
-    proc = subprocess.run([str(binary), *map(str, argv)], capture_output=True, text=True, timeout=120)
+    proc = subprocess.run([str(binary), *map(str, argv)], capture_output=True, text=True, encoding="utf-8", timeout=120)
+    if proc.returncode != code:
+        try:
+            message=json.loads(proc.stdout)['error']['message']
+            log=Path(message.rsplit('bounded diagnostics: ',1)[1])
+            print('Backend diagnostic:',log.read_text(encoding='utf-8',errors='replace')[-4096:])
+        except (KeyError,IndexError,ValueError,OSError):
+            pass
     assert proc.returncode == code, (proc.returncode, proc.stdout, proc.stderr)
     assert not proc.stderr.strip(), proc.stderr
     assert len(proc.stdout.splitlines()) == 1, proc.stdout
@@ -84,7 +92,10 @@ def image_success():
     assert result['status'] == 'completed' and not result['cache_hit']
     assert (work/'denoised.png.manifest.json').exists()
     assert call('status', work/'denoised.png.job.json')['status'] == 'completed'
-    assert call('run', image_job)['cache_hit'] is True
+    if cache_supported:
+        assert call('run', image_job)['cache_hit'] is True
+    else:
+        assert call('run', image_job, code=2)['error']['code'] == 'OUTPUT_EXISTS'
 check('real_image_denoise_verified_commit_and_cache', image_success)
 
 def reject_changes():
@@ -128,20 +139,25 @@ def video():
     assert v['relative_frame_timestamps_equal'] and v['audio_packet_sha256_equal']
     assert r['output_media']['frames'] == 10
     assert sha(work/'source.mkv') == raw_hash
-    assert call('run', p)['cache_hit'] is True
+    if cache_supported:
+        assert call('run', p)['cache_hit'] is True
 check('real_vfr_video_denoise_audio_payload_and_timing', video)
 
 def batch():
     batch_file = save('batch.json', {'schema_version':1, 'jobs':[job(),job(alpha='straight')]})
     r = call('batch', batch_file, code=3)
-    assert not r['success'] and r['results'][0]['result']['cache_hit']
+    assert not r['success']
+    if cache_supported:
+        assert r['results'][0]['result']['cache_hit']
+    else:
+        assert r['results'][0]['error']['code'] == 'OUTPUT_EXISTS'
     assert r['results'][1]['error']['code'] == 'UNSUPPORTED_ALPHA'
 check('serial_batch_resume_and_partial_failure_exit_code', batch)
 
 def crash_status():
     state = save('dead.job.json', dict(tool='dcc-media-enhance', schema_version=1,
                  job_id='fixture-no-process', status='running', supervisor_pid=2147483647,
-                 supervisor_identity='0', supervisor_pid_namespace=os.readlink('/proc/self/ns/pid')))
+                 supervisor_identity='0', supervisor_pid_namespace=call('doctor')['process_namespace']))
     assert call('status', state)['status'] == 'interrupted'
     assert call('cancel', state)['cancel_requested']
     assert call('cancel', state)['cancel_requested']
@@ -152,7 +168,7 @@ def live_cancel():
     source=work/'cancel-source.ppm'
     source.write_bytes(b'P6\n512 512\n255\n'+bytes([73,107,149])*(512*512))
     request=save('live-cancel.json', job(input=source.name, output='cancelled.png'))
-    proc=subprocess.Popen([str(binary),'run',str(request)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    proc=subprocess.Popen([str(binary),'run',str(request)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True, encoding="utf-8")
     state=work/'cancelled.png.job.json'; deadline=time.monotonic()+60
     while not state.exists() and proc.poll() is None and time.monotonic()<deadline:
         time.sleep(0.002)

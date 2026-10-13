@@ -5,7 +5,7 @@ installed media tools rather than reimplementing denoising algorithms or trainin
 another model. Jobs have explicit resource budgets, machine-readable results,
 source provenance, verified outputs, and resumable serial batches.
 
-**Initial target: Linux CPU cloud machines.** GPU, another MCP server, a DCC host,
+**Native CI targets: Linux, Windows and macOS CPU.** GPU, another MCP server, a DCC host,
 a network connection, and a cluster scheduler are not required by the CLI. Individual
 backends retain their own requirements. Render denoising currently uses an installed
 Blender; standalone OIDN is a planned replacement/alternative, not shipped yet.
@@ -29,7 +29,7 @@ channel in the derivative.
 
 ## Build and use
 
-Rust 1.85+; Linux. Dependencies are pinned in `Cargo.lock`.
+Rust 1.85+; see [platform guarantees and limits](docs/platforms.md). Dependencies are pinned in `Cargo.lock`.
 
 ```sh
 CARGO_BUILD_JOBS=1 cargo build --locked
@@ -118,3 +118,16 @@ remove backend ABI, native-library, model-license or
 supply-chain obligations. Rust dependency notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 The wrapper's MIT license does not relicense FFmpeg,
 Blender, OIDN, ncnn, or model weights.
+
+## Native binaries and Core skill
+
+PR/main CI builds and runs Linux x86_64, Windows x86_64, macOS x86_64 and ARM64
+binaries. Download the matching tested workflow artifact, verify its archive and
+binary SHA-256, then use the executable by absolute path. No backend is bundled.
+`capabilities` gives the machine-readable CLI surface and platform limits.
+
+See [platforms and release workflow](docs/platforms.md) and
+[private dcc-mcp-cli integration](docs/dcc-mcp-integration.md).
+Windows/macOS cache reuse is deliberately disabled until full loader identity is
+verified. Real FFmpeg CI tests do not establish OIDN or neural-upscale support on
+those machines. Existing Linux render evidence remains scoped to that host.

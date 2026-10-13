@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "operation": "denoise",
+  "media": "image",
+  "content": "render",
+  "input": "raw.exr",
+  "output": "denoised.exr",
+  "backend": "auto",
+  "colorspace": "scene-linear",
+  "alpha": "opaque",
+  "limits": {
+    "threads": 1,
+    "memory_mb": 1024,
+    "timeout_secs": 300,
+    "max_pixels": 1048576,
+    "max_input_mb": 64,
+    "max_output_mb": 64,
+    "min_free_disk_mb": 700
+  },
+  "passes": {
+    "layer": "ViewLayer",
+    "beauty": "Combined",
+    "albedo": "Denoising Albedo",
+    "normal": "Denoising Normal"
+  }
+}

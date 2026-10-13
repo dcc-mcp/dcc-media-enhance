@@ -1,0 +1,76 @@
+{
+  "date": "2026-10-12",
+  "binary_sha256": "7e3a69c2966622b2a24776039f955e52d670fe06bb7d08763f7663ce9a1aa95a",
+  "unit_tests_passed": 10,
+  "integration_groups": [
+    {
+      "test": "doctor_schema_probe_plan_no_media_output",
+      "success": true,
+      "seconds": 6.321
+    },
+    {
+      "test": "real_image_denoise_verified_commit_and_cache",
+      "success": true,
+      "seconds": 6.044
+    },
+    {
+      "test": "fail_closed_contract_and_no_clobber",
+      "success": true,
+      "seconds": 2.118
+    },
+    {
+      "test": "symlink_and_foreign_sidecar_safety",
+      "success": true,
+      "seconds": 2.261
+    },
+    {
+      "test": "cpu_resize_separate_from_unconfigured_neural_upscale",
+      "success": true,
+      "seconds": 4.009
+    },
+    {
+      "test": "real_vfr_video_denoise_audio_payload_and_timing",
+      "success": true,
+      "seconds": 8.956
+    },
+    {
+      "test": "serial_batch_resume_and_partial_failure_exit_code",
+      "success": true,
+      "seconds": 1.558
+    },
+    {
+      "test": "interrupted_state_and_idempotent_cancel",
+      "success": true,
+      "seconds": 0.031
+    },
+    {
+      "test": "real_cli_cancel_and_retry_preserved_source",
+      "success": true,
+      "seconds": 5.766
+    }
+  ],
+  "render_backend": {
+    "version": "Blender 4.5.14 LTS",
+    "dimensions": [
+      128,
+      86
+    ],
+    "receipt": {
+      "elapsed_ms": 2475,
+      "exit_code": 0,
+      "memory_enforcement": "sampled_process_group_watchdog_not_hard_limit",
+      "sampled_peak_rss_kib": 287588
+    },
+    "output_sha256": "f93c6eb8c31730aefc2566979374c948bf481ece30e99593489f8eee87bd6b53",
+    "source_unchanged": true,
+    "verification": {
+      "dimensions": true,
+      "pixel_decode": true,
+      "quality_reference": "not_run",
+      "video": null,
+      "visual_review": "not_run"
+    }
+  },
+  "neural_cpu_sr": "failed_current_environment",
+  "quality_benchmark": false
+}

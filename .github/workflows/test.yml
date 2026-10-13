@@ -30,3 +30,25 @@ jobs:
           python3 tests/smoke.py --binary "$PWD/target/debug/dcc-media-enhance"
       - name: Cache and cancellation safety regressions
         run: python3 tests/risk_smoke.py --binary "$PWD/target/debug/dcc-media-enhance"
+      - name: Prepare tested Linux preview artifact
+        run: |
+          mkdir -p target/linux-preview
+          cp target/debug/dcc-media-enhance LICENSE THIRD_PARTY_NOTICES.md Cargo.lock target/linux-preview/
+          rustc --version --verbose > target/linux-preview/build-runtime.txt
+          ldd --version | head -n 1 >> target/linux-preview/build-runtime.txt
+          sha256sum target/linux-preview/dcc-media-enhance > target/linux-preview/SHA256SUMS
+          SYSROOT="$(rustc --print sysroot)"
+          for NAME in COPYRIGHT-library.html COPYRIGHT.html LICENSE-APACHE LICENSE-MIT; do
+            if test -f "$SYSROOT/share/doc/rust/$NAME"; then
+              cp "$SYSROOT/share/doc/rust/$NAME" target/linux-preview/
+            fi
+          done
+          if test -d "$SYSROOT/share/doc/rust/licenses"; then
+            cp -R "$SYSROOT/share/doc/rust/licenses" target/linux-preview/rust-licenses
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64-tested-preview
+          path: target/linux-preview/
+          if-no-files-found: error
+          retention-days: 3

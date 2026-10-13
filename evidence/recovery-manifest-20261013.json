@@ -1,0 +1,54 @@
+{
+  "source_commit": "17d44c266385bfcc1f493a4c9900867f41e92d16",
+  "run": "https://github.com/dcc-mcp/dcc-media-enhance/actions/runs/38349895059",
+  "artifacts": [
+    {
+      "id": 11791021723,
+      "name": "dcc-media-enhance-macos-x86_64",
+      "digest": "sha256:46c109f0696bb4158d5c7121ac3558d3575db44b01b90bc0b201832019b67b63",
+      "size_in_bytes": 483285,
+      "expires_at": "2026-10-20T05:13:31Z"
+    },
+    {
+      "id": 11790985781,
+      "name": "dcc-media-enhance-windows-x86_64",
+      "digest": "sha256:066c383872af5d6d72759e154f56461366a6937786fd5d5b0e91fa801eb9ebe6",
+      "size_in_bytes": 496559,
+      "expires_at": "2026-10-20T05:11:34Z"
+    },
+    {
+      "id": 11790845871,
+      "name": "msvc-kit-doctor-windows-x86_64",
+      "digest": "sha256:7a8409196887e5aa882a7c0cdc019a51b190d4e65f8521be83a7263881eacd43",
+      "size_in_bytes": 1376,
+      "expires_at": "2026-10-20T05:11:35Z"
+    },
+    {
+      "id": 11790771765,
+      "name": "dcc-media-enhance-macos-aarch64",
+      "digest": "sha256:859c5d0031fb6b981076020d181277b4e4807578703b4c7ad6ac97ea6facaf2e",
+      "size_in_bytes": 458411,
+      "expires_at": "2026-10-20T05:12:03Z"
+    },
+    {
+      "id": 11790481941,
+      "name": "dcc-media-enhance-linux-x86_64",
+      "digest": "sha256:49bd7e553bb36ab70e03eb7b663630d190098b9d78e0cc2060247325fe22e576",
+      "size_in_bytes": 515946,
+      "expires_at": "2026-10-20T05:10:17Z"
+    }
+  ],
+  "core_release": "https://github.com/dcc-mcp/dcc-mcp-core/releases/tag/v0.20.44",
+  "official_runtime": {
+    "version": "0.20.44",
+    "core_wheel_sha256": "14266e6617f9ed5f72cd0a59c8406385a674207d2750f482e872ca109ab68155",
+    "cli_pypi_wheel_sha256": "c4516ae29e1d178c10583fe08a654786a282c787985fb5d3f3e51ec2880ad991",
+    "cli_native_sha256": "2efc89c867ef57f57d73fc3b03b849cc2e93b0dd7e327b9abbdd8a8d20e3a3a7",
+    "cli_native_matches_official_github_asset": true,
+    "sources": [
+      "https://github.com/dcc-mcp/dcc-mcp-core/releases/tag/v0.20.44",
+      "https://pypi.org/pypi/dcc-mcp-cli/0.20.44/json"
+    ]
+  },
+  "note": "Original cloud executor was replaced. Remote source and CI artifacts survived. Linux distribution was revalidated and restored; no old process cleanup is inferred from replacement."
+}

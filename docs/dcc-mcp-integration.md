@@ -10,8 +10,12 @@ No private source needs to be copied into the public Core repository.
 The checked SDK baseline is dcc-mcp-core 0.20.44. Compatibility stays within
 `>=0.20.44,<0.21`; a later minor requires revalidation. CI pins the exact baseline
 wheel and verifies native catalog parsing, skill discovery, standard envelopes,
-binary-identity rejection and a real CLI run/status round trip. This is not yet
-a live deployed-gateway or arbitrary DCC-host acceptance claim.
+binary-identity rejection and a real CLI run/status round trip on all four native
+platforms. A separate Linux gate runs the actual dcc-mcp-cli 0.20.44 through an
+isolated loopback gateway, discovers and loads the private Python skill, validates
+wire schemas/annotations, and executes real FFmpeg resize plus explicit media
+cancellation. This does not claim installation into an existing user gateway or
+arbitrary DCC-host acceptance.
 
 ## Explicit host setup
 
@@ -58,3 +62,37 @@ processing stopped. Use this skill's explicit `cancel` tool with the CLI state
 path, then inspect `status`. The bridge supports Core's in-process `main(**params)`
 execution as well as the default subprocess stdin-JSON path; in-process token
 cancellation is handled cooperatively. No new Core cancellation protocol is added.
+
+
+## Reproduce the real gateway acceptance
+
+With the pinned Core SDK and CLI 0.20.44 already installed, and FFmpeg available:
+
+```sh
+python tests/test_gateway_e2e.py --binary /absolute/path/to/dcc-media-enhance \
+  --cli /absolute/path/to/dcc-mcp-cli --report /chosen/path/acceptance.json
+```
+
+This Linux-only wire test owns short-lived gateway and Python host processes,
+loopback-only listeners, a private FileRegistry and temporary HOME/XDG paths. It
+uses CLI REST calls throughout; each media call must report
+`control_route=gateway` and `gateway_stats_recorded=true`. It verifies real 8x8
+resize to 16x16, source hashes, Core `--wait`, native status, cancellation of a
+bounded real CPU denoise, no cancelled output, and listener/process teardown.
+The existing four-platform SDK tests also verify the exact parsed property-key
+sets and actual registered Core `ToolAnnotations` values.
+
+For a `create_skill_server` host to join a gateway, its `gateway_port` must name
+the existing gateway port. Setting it to zero disables FileRegistry registration,
+not merely gateway election. The acceptance test starts its gateway first and
+then joins that exact port; it does not edit the machine-wide registry.
+
+Core's default subprocess runner can mark the invocation `completed` while its
+returned skill envelope has `success=false, error=CANCELLED`. The CLI then exits
+1 on polling that failed media result; `context.exit_code=5` retains the native
+cancellation code. Inspect both layers. A terminal Core task alone does not prove
+a successful output, nor does a cancellation acknowledgement prove native exit.
+
+The dated compact acceptance receipt is retained under `evidence/`; CI uploads
+its own fresh receipt separately from distribution archives. No gateway access
+credentials or persistent profile are created by the test.

@@ -1,55 +1,98 @@
-name: test
+name: native-test-and-package
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:
-  linux-cpu:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
+  native:
+    name: native-${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+            binary: dcc-media-enhance
+          - os: windows-2022
+            platform: windows-x86_64
+            target: x86_64-pc-windows-msvc
+            binary: dcc-media-enhance.exe
+          - os: macos-15-intel
+            platform: macos-x86_64
+            target: x86_64-apple-darwin
+            binary: dcc-media-enhance
+          - os: macos-15
+            platform: macos-aarch64
+            target: aarch64-apple-darwin
+            binary: dcc-media-enhance
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     env:
       CARGO_BUILD_JOBS: 2
+      DCC_MEDIA_BUILD_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Install CPU test backend from Ubuntu packages
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Linux CPU backend
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y ffmpeg
+      - name: Install macOS CPU backend
+        if: runner.os == 'macOS'
+        run: brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
+      - name: Install Windows CPU backend
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y ffmpeg
-      - name: Optimized unit tests
-        run: cargo test --locked --release
-      - name: Build optimized CLI
-        run: cargo build --locked --release
-      - name: Installed CPU backend smoke tests
+          choco install ffmpeg --no-progress --yes
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg provisioning failed.' }
+      - name: Prepare pinned msvc-kit
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/ci/prepare-msvc-kit.ps1
+      - name: Native Windows doctor, tests and release build
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/ci/windows-build.ps1
+      - name: Native Unix unit tests and release build
+        if: runner.os != 'Windows'
         run: |
-          command -v ffmpeg
-          command -v ffprobe
-          python3 tests/smoke.py --binary "$PWD/target/release/dcc-media-enhance"
-      - name: Cache and cancellation safety regressions
-        run: python3 tests/risk_smoke.py --binary "$PWD/target/release/dcc-media-enhance"
-      - name: Prepare tested Linux preview artifact
+          cargo test --locked --release
+          cargo build --locked --release
+      - name: Install pinned Core SDK for private skill contract verification
         run: |
-          mkdir -p target/linux-preview
-          cp target/release/dcc-media-enhance LICENSE THIRD_PARTY_NOTICES.md Cargo.lock target/linux-preview/
-          printf 'cargo_profile=release\nsource_commit=%s\n' "$GITHUB_SHA" > target/linux-preview/build-runtime.txt
-          rustc --version --verbose >> target/linux-preview/build-runtime.txt
-          ldd --version | head -n 1 >> target/linux-preview/build-runtime.txt
-          (cd target/linux-preview && sha256sum dcc-media-enhance > SHA256SUMS)
-          SYSROOT="$(rustc --print sysroot)"
-          for NAME in COPYRIGHT-library.html COPYRIGHT.html LICENSE-APACHE LICENSE-MIT; do
-            if test -f "$SYSROOT/share/doc/rust/$NAME"; then
-              cp "$SYSROOT/share/doc/rust/$NAME" target/linux-preview/
-            fi
-          done
-          if test -d "$SYSROOT/share/doc/rust/licenses"; then
-            cp -R "$SYSROOT/share/doc/rust/licenses" target/linux-preview/rust-licenses
-          fi
+          python -m pip install --only-binary=:all: dcc-mcp-core==0.20.44
+      - name: Portable CLI contract and real CPU smoke
+        shell: bash
+        run: |
+          python tests/contract_smoke.py --binary "target/release/${{ matrix.binary }}"
+          python tests/smoke.py --binary "target/release/${{ matrix.binary }}"
+          python tests/lifecycle_smoke.py --binary "target/release/${{ matrix.binary }}"
+          python tests/test_skill_bridge.py --binary "target/release/${{ matrix.binary }}"
+      - name: Linux adversarial regressions
+        if: runner.os == 'Linux'
+        run: python tests/risk_smoke.py --binary target/release/dcc-media-enhance
+      - name: Package only native-tested executable
+        shell: bash
+        run: python scripts/ci/package.py --binary "target/release/${{ matrix.binary }}" --platform "${{ matrix.platform }}" --target "${{ matrix.target }}"
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-x86_64-tested-preview
-          path: target/linux-preview/
+          name: dcc-media-enhance-${{ matrix.platform }}
+          path: dist/*
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os == 'Windows'
+        with:
+          name: msvc-kit-doctor-windows-x86_64
+          path: msvc-kit-doctor.json
+          if-no-files-found: warn
+          retention-days: 7

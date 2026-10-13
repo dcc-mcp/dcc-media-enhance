@@ -136,3 +136,15 @@ references are explicitly disabled. Convert referenced inputs in a separate,
 authorized ingestion step before submitting a self-contained file. See FFmpeg's
 [format options](https://ffmpeg.org/ffmpeg-formats.html) and
 [protocol controls](https://ffmpeg.org/ffmpeg-protocols.html).
+
+
+## Version 0.2 platform additions
+
+`capabilities` exposes commands, schema versions, exit categories, cancellation,
+memory policy and cache-reuse availability. `--version` includes the compiled
+native target and source commit. See [platforms](platforms.md) for differences:
+Windows uses native Job Objects and deny-sharing locks; macOS uses process groups
+and libproc. Linux retains namespace-aware status and verified cache reuse.
+Windows/macOS do not claim a verified loader closure and do not reuse completed
+outputs. Windows sidecars use write-through replacement; local hard links remain
+the output publication requirement. No global runtime configuration is changed.

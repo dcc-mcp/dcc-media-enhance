@@ -1,6 +1,15 @@
 mod contract;
 mod engine;
+mod platform;
+#[cfg(target_os = "linux")]
 mod process;
+#[cfg(not(target_os = "linux"))]
+#[path = "process_portable.rs"]
+mod process;
+#[cfg(windows)]
+mod windows;
+#[cfg(target_os = "macos")]
+mod macos;
 
 use serde_json::{Value, json};
 use std::{env, fs, path::Path};
@@ -30,6 +39,18 @@ fn main() {
 
 fn dispatch() -> contract::Result<Value> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.len() == 1 && args[0] == "capabilities" {
+        return Ok(json!({"schema_version":1,"success":true,"name":"dcc-media-enhance",
+            "version":env!("CARGO_PKG_VERSION"),"target":env!("DCC_MEDIA_TARGET"),
+            "commands":["capabilities","doctor","schema","probe","plan","run","batch","status","cancel"],
+            "job_schema_version":1,"batch_schema_version":1,"stdout":"one_json_value",
+            "backend_installation":"explicit_external_provisioning_only",
+            "cache_reuse_supported":process::cache_reuse_supported(),
+            "memory_enforcement":process::memory_enforcement(),
+            "execution":"synchronous_owned_supervisor","cancellation":"owned_state_sentinel",
+            "dcc_mcp":{"integration":"private_skill","discovery":"DCC_MCP_SKILL_PATHS","tools_manifest":"skill/media-enhance/tools.yaml"},
+            "exit_codes":{"0":"success","2":"invalid_request_or_existing_output","3":"backend_io_or_batch_failure","4":"budget_exceeded","5":"cancelled"}}));
+    }
     if args.len() == 1 && args[0] == "doctor" {
         return engine::doctor();
     }
@@ -40,7 +61,7 @@ fn dispatch() -> contract::Result<Value> {
     }
     if args.len() == 1 && args[0] == "--version" {
         return Ok(
-            json!({"name":"dcc-media-enhance","version":env!("CARGO_PKG_VERSION"),"schema_version":1}),
+            json!({"name":"dcc-media-enhance","version":env!("CARGO_PKG_VERSION"),"schema_version":1,"target":env!("DCC_MEDIA_TARGET"),"source_commit":env!("DCC_MEDIA_BUILD_COMMIT")}),
         );
     }
     if args.len() == 2 && args[0] == "probe" {
@@ -111,7 +132,7 @@ fn dispatch() -> contract::Result<Value> {
     }
     Err(contract::Error::new(
         "USAGE",
-        "Use doctor | schema | --version | probe INPUT | plan JOB.json | run JOB.json | batch BATCH.json | status STATE.json | cancel STATE.json",
+        "Use capabilities | doctor | schema | --version | probe INPUT | plan JOB.json | run JOB.json | batch BATCH.json | status STATE.json | cancel STATE.json",
         2,
     ))
 }
@@ -131,3 +152,6 @@ fn validate_state(v: &Value) -> contract::Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod runtime_tests;

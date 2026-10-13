@@ -1,6 +1,16 @@
 ---
 name: media-enhance
 description: Denoise retained render EXRs, SDR images or videos with explicit CPU budgets and provenance using the dcc-media-enhance CLI. Also distinguish deterministic resize from optional neural upscale. Use for post-render denoising, agent batch processing, or planning machine-compatible enhancement.
+license: MIT
+compatibility: Python 3.12+ for Core bridge; explicitly installed native CLI and media backends
+metadata:
+  dcc-mcp:
+    dcc: python
+    version: "0.2.0"
+    layer: infrastructure
+    search-hint: "media enhancement, CPU denoise, render EXR, image video, resize, bounded batch"
+    tags: "media, rendering, denoise, postprocess, cpu"
+    tools: tools.yaml
 ---
 
 # Media enhancement
@@ -38,8 +48,9 @@ Consider other active workloads; `doctor` observations are not reservations.
 A previous frame fitting is not proof the next will fit. On resource failure,
 retain raw, re-plan against actual available capacity, and retry enhancement only.
 Do not silently raise limits or change global defaults to force a job through.
-Default to CPU and serial jobs. The sampled RSS watchdog is not a hard OS limit;
-use the existing scheduler/container for hard isolation. No cluster is started.
+Default to CPU and serial jobs. Read `memory_enforcement` for the native policy.
+Windows also caps Job Object commit memory; Unix RSS watchdogs are not hard limits.
+Use the existing scheduler/container for whole-job isolation. No cluster is started.
 
 Use render models only for render noise. Photos and video have separate routes.
 Noisy render AOVs need the selected backend's proper prefilter; never invent AOVs.
@@ -71,3 +82,20 @@ On the initial dot cloud validation host, official waifu2x releases 20250915 and
 20250504 failed real CPU inference. Treat neural upscale as unavailable there;
 do not substitute Lanczos and call it neural SR. Revalidation is required on a
 different, explicitly provisioned runtime.
+
+## Existing dcc-mcp-cli integration
+
+Expose this private skill through an explicitly configured `DCC_MCP_SKILL_PATHS`
+root in the existing Python host. Configure `DCC_MEDIA_ENHANCE_BIN` as an absolute
+installed binary path and `DCC_MEDIA_ENHANCE_SHA256` to its verified digest in that
+host's environment. This repository never changes the global PATH or registers a
+server by itself. Search through the existing `dcc-mcp-cli search`, then follow
+its returned `load-skill`, `describe`, and `call` instructions. Do not guess a
+server ID or duplicate Core's MCP/REST transport.
+
+Tools use Core's `skill_success` / `skill_error` envelopes and retain the entire
+CLI result under `context.media`. Long execution uses Core's existing async-task
+metadata; media `status` / `cancel` continue to reference the CLI state path.
+Outer Core-task cancellation is distinct from a confirmed media terminal state.
+The bridge has an explicit 900-second default outer budget; choose it deliberately
+for longer jobs. Full loader fingerprints and cache reuse are currently Linux-only.

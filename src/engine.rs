@@ -4,7 +4,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::os::fd::AsRawFd;
 use std::{
     fs,
     io::{Read, Seek, Write},
@@ -268,8 +267,8 @@ pub fn doctor() -> Result<Value> {
         json!({"schema_version":1,"success":true,"version":env!("CARGO_PKG_VERSION"),"platform":std::env::consts::OS,"architecture":std::env::consts::ARCH,
         "capacity_observations":{"mem_available_kib":fs::read_to_string("/proc/meminfo").ok().and_then(|s|s.lines().find(|l|l.starts_with("MemAvailable:")).and_then(|l|l.split_whitespace().nth(1)).and_then(|n|n.parse::<u64>().ok())),"cgroup_memory_max":fs::read_to_string("/sys/fs/cgroup/memory.max").ok().map(|s|s.trim().to_owned()),"cgroup_cpu_max":fs::read_to_string("/sys/fs/cgroup/cpu.max").ok().map(|s|s.trim().to_owned()),"free_disk_bytes":process::disk_free(&std::env::current_dir()?).ok(),"note":"Observations are not reservations; concurrent workloads and parent cgroups may constrain capacity."},"logical_cpus":std::thread::available_parallelism().map(|n|n.get()).unwrap_or(1),"backends":backends,
         "ffmpeg_filters":{"nlmeans":filters.lines().any(|l|l.split_whitespace().nth(1)==Some("nlmeans")),"atadenoise":filters.lines().any(|l|l.split_whitespace().nth(1)==Some("atadenoise"))},
-        "default_device":"cpu","memory_enforcement":"sampled_process_group_watchdog_not_hard_limit","network_required_for_inference":false,
-        "supported_platforms":["linux"],"cluster_scheduler_included":false}),
+        "default_device":"cpu","memory_enforcement":process::memory_enforcement(),"network_required_for_inference":false,
+        "supported_platforms":["linux","windows","macos"],"cache_reuse_supported":process::cache_reuse_supported(),"process_namespace":process::pid_namespace(),"supervisor_identity":process::process_identity(std::process::id()),"abrupt_supervisor_death_cleanup":cfg!(target_os="linux") || cfg!(windows),"cluster_scheduler_included":false}),
     )
 }
 
@@ -300,6 +299,8 @@ fn extension(path: &Path) -> String {
 }
 pub fn plan(job: &Job, base: &Path) -> Result<Plan> {
     job.validate()?;
+    crate::platform::validate_path(&job.input)?;
+    crate::platform::validate_path(&job.output)?;
     let original = contract::resolve(base, &job.input);
     contract::regular_file(&original, job.limits.max_input_mb * 1024 * 1024)?;
     let input = fs::canonicalize(original)?;
@@ -392,8 +393,14 @@ pub fn plan(job: &Job, base: &Path) -> Result<Plan> {
     };
     let mut warnings = vec![
         "Enhanced output is a derivative; source is retained unchanged.".into(),
-        "RSS limits are sampled watchdogs, not OS hard limits.".into(),
+        format!("Memory policy: {}.", process::memory_enforcement()),
     ];
+    if !process::cache_reuse_supported() {
+        warnings.push("Full native loader identity is not verified on this platform; existing outputs are not reused as cache entries. Choose a new output for reruns.".into());
+    }
+    if cfg!(target_os="macos") {
+        warnings.push("macOS: cooperative cancellation and owned process-group cleanup are supported; abrupt supervisor SIGKILL cannot guarantee descendant cleanup. Use an external job supervisor for that guarantee.".into());
+    }
     let (name, ext) = match backend.as_str() {
         "blender-oidn"
             if job.operation == "denoise" && job.media == "image" && job.content == "render" =>
@@ -550,7 +557,7 @@ pub fn plan(job: &Job, base: &Path) -> Result<Plan> {
     }
     let runtime_fingerprint = process::runtime_fingerprint(&executable)?;
     let cache_key = contract::hash_bytes(&serde_json::to_vec(
-        &json!({"job":job,"resolved_input":input,"resolved_output":output,"source":source_sha256,"backend":backend,"binary":executable_sha256,"runtime":runtime_fingerprint,"models":models,"helper":contract::hash_bytes(include_bytes!("../backend/blender_denoise.py")),"engine":contract::hash_bytes(include_bytes!("engine.rs")),"runner":contract::hash_bytes(include_bytes!("process.rs")),"contract":contract::hash_bytes(include_bytes!("contract.rs")),"cli":contract::hash_bytes(include_bytes!("main.rs")),"version":env!("CARGO_PKG_VERSION")}),
+        &json!({"job":job,"resolved_input":input,"resolved_output":output,"source":source_sha256,"backend":backend,"binary":executable_sha256,"runtime":runtime_fingerprint,"models":models,"helper":contract::hash_bytes(include_bytes!("../backend/blender_denoise.py")),"engine":contract::hash_bytes(include_bytes!("engine.rs")),"runner":contract::hash_bytes(include_bytes!("process.rs")),"portable_runner":contract::hash_bytes(include_bytes!("process_portable.rs")),"platform":contract::hash_bytes(include_bytes!("platform.rs")),"windows":contract::hash_bytes(include_bytes!("windows.rs")),"contract":contract::hash_bytes(include_bytes!("contract.rs")),"cli":contract::hash_bytes(include_bytes!("main.rs")),"version":env!("CARGO_PKG_VERSION")}),
     )?);
     Ok(Plan {
         schema_version: 1,
@@ -573,34 +580,14 @@ pub fn plan(job: &Job, base: &Path) -> Result<Plan> {
 }
 
 struct Lock {
-    file: fs::File,
-}
-impl Drop for Lock {
-    fn drop(&mut self) {
-        unsafe {
-            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
-        }
-    }
+    _file: fs::File,
 }
 fn acquire_lock(path: &Path, owner: &str) -> Result<Lock> {
-    use std::os::unix::fs::OpenOptionsExt;
-    let (mut file, new) = match fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create_new(true)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(path)
-    {
+    let (mut file, new) = match crate::platform::lock_file(path, true) {
         Ok(f) => (f, true),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (
-            fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .custom_flags(libc::O_NOFOLLOW)
-                .open(path)?,
-            false,
-        ),
-        Err(e) => return Err(e.into()),
+        Err(e) if e.code == "IO_ERROR" && contract::path_exists(path)? =>
+            (crate::platform::lock_file(path, false)?, false),
+        Err(e) => return Err(e),
     };
     let md = file.metadata()?;
     if !md.is_file() || md.len() > 4096 {
@@ -610,13 +597,7 @@ fn acquire_lock(path: &Path, owner: &str) -> Result<Lock> {
             3,
         ));
     }
-    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        return Err(Error::new(
-            "OUTPUT_LOCKED",
-            "Another supervisor owns this output",
-            3,
-        ));
-    }
+    crate::platform::lock(&file)?;
     if !new {
         let mut text = String::new();
         Read::by_ref(&mut file)
@@ -643,7 +624,7 @@ fn acquire_lock(path: &Path, owner: &str) -> Result<Lock> {
         serde_json::to_string(&json!({"tool":"dcc-media-enhance","job_id":owner}))?.as_bytes(),
     )?;
     file.sync_all()?;
-    Ok(Lock { file })
+    Ok(Lock { _file: file })
 }
 struct CancelCleanup {
     path: PathBuf,
@@ -682,7 +663,8 @@ fn complete_cached_manifest(m: &Value, p: &Plan, job: &Job) -> bool {
     } else {
         video.is_null() && out.frames == Some(1)
     };
-    m["schema_version"] == 1
+    process::cache_reuse_supported()
+        && m["schema_version"] == 1
         && m["success"] == true
         && m["status"] == "completed"
         && m["cache_key"] == p.cache_key
@@ -705,7 +687,7 @@ fn complete_cached_manifest(m: &Value, p: &Plan, job: &Job) -> bool {
         && receipt["elapsed_ms"].as_u64().is_some()
         && receipt["sampled_peak_rss_kib"].as_u64().is_some()
         && receipt["exit_code"] == 0
-        && receipt["memory_enforcement"] == "sampled_process_group_watchdog_not_hard_limit"
+        && receipt["memory_enforcement"] == process::memory_enforcement()
         && out.width == p.expected_width
         && out.height == p.expected_height
         && out.frames.is_some_and(|n| n > 0)
@@ -750,8 +732,7 @@ pub fn run(job: &Job, base: &Path) -> Result<Value> {
     let _lock = acquire_lock(&lock_path, &id)?;
     let work = p.output.parent().unwrap().join(format!(".dcc-media-{id}"));
     fs::create_dir(&work)?;
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(&work, fs::Permissions::from_mode(0o700))?;
+    crate::platform::private_directory(&work)?;
     let staging = work.join(format!("result.{}", extension(&p.output)));
     let log = work.join("backend.log");
     let state = contract::suffix(&p.output, ".job.json");
@@ -803,7 +784,7 @@ pub fn run(job: &Job, base: &Path) -> Result<Value> {
             // publish two independent names; a crash may leave a complete orphan
             // output, which is never automatically trusted or overwritten.
             let published = (|| -> Result<()> {
-                fs::File::open(&staging)?.sync_all()?;
+                fs::OpenOptions::new().write(true).open(&staging)?.sync_all()?;
                 let mf = work.join("manifest.json");
                 contract::write_json(&mf, &result)?;
                 process::check_cancel(Some(&cancel))?;
@@ -1276,7 +1257,7 @@ pub fn batch(path: &Path) -> Result<Value> {
         }
     }
     Ok(
-        json!({"schema_version":1,"success":success,"cancelled":cancelled,"not_started":b.jobs.len()-results.len(),"execution":"serial","resume":"completed items reuse matching verified output manifests","results":results}),
+        json!({"schema_version":1,"success":success,"cancelled":cancelled,"not_started":b.jobs.len()-results.len(),"execution":"serial","resume":if process::cache_reuse_supported(){"completed items reuse matching verified output manifests"}else{"cache reuse disabled on this platform; skip completed outputs explicitly or choose new output paths"},"results":results}),
     )
 }
 

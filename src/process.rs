@@ -467,3 +467,6 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 }
+
+pub fn memory_enforcement() -> &'static str { "sampled_process_group_watchdog_not_hard_limit" }
+pub fn cache_reuse_supported() -> bool { true }

@@ -3,3 +3,5 @@
 *.partial.*
 *.lock-owner
 __pycache__/
+/dist/
+/msvc-kit-doctor.json

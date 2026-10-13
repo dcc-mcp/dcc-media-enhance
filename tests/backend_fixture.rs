@@ -3,6 +3,12 @@ use std::{env, fs, process::Command, thread, time::Duration};
 fn main() {
     let a: Vec<String>=env::args().skip(1).collect();
     match a[0].as_str() {
+        "lease" => {
+            Command::new(env::current_exe().unwrap()).args(["child", &a[4]]).spawn().unwrap();
+            fs::write(&a[1], std::process::id().to_string()).unwrap();
+            while !std::path::Path::new(&a[2]).exists() { thread::sleep(Duration::from_millis(10)); }
+            fs::write(&a[3], "backend completed").unwrap();
+        },
         "sleep" => thread::sleep(Duration::from_secs(30)),
         "child" => { thread::sleep(Duration::from_secs(2)); fs::write(&a[1],"orphan survived").unwrap(); },
         "orphan" => { Command::new(env::current_exe().unwrap()).args(["child", &a[1]]).spawn().unwrap(); },

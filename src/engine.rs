@@ -582,6 +582,18 @@ pub fn plan(job: &Job, base: &Path) -> Result<Plan> {
 struct Lock {
     _file: fs::File,
 }
+impl Drop for Lock {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        {
+            use std::os::fd::AsRawFd;
+            // flock belongs to the open file description. Another thread may
+            // fork while this guard lives; its CLOEXEC copy can briefly outlive
+            // our close. Release ownership explicitly, then File closes normally.
+            unsafe { libc::flock(self._file.as_raw_fd(), libc::LOCK_UN); }
+        }
+    }
+}
 fn acquire_lock(path: &Path, owner: &str) -> Result<Lock> {
     let (mut file, new) = match crate::platform::lock_file(path, true) {
         Ok(f) => (f, true),
@@ -1275,8 +1287,15 @@ mod tests {
         let path = dir.join("owned.lock");
         let first = acquire_lock(&path, "first").unwrap();
         assert!(matches!(acquire_lock(&path,"second"),Err(e) if e.code=="OUTPUT_LOCKED"));
+        // Deterministically model the shared open-file description inherited
+        // during another thread's fork-to-exec window, without timing sleeps.
+        #[cfg(unix)]
+        let inherited_description = first._file.try_clone().unwrap();
         drop(first);
         let recovered = acquire_lock(&path, "recovered").unwrap();
+        #[cfg(unix)]
+        drop(inherited_description);
+        assert!(matches!(acquire_lock(&path,"still-owned"),Err(e) if e.code=="OUTPUT_LOCKED"));
         drop(recovered);
         fs::write(dir.join("foreign.lock"), "not ours").unwrap();
         assert!(
@@ -1287,6 +1306,48 @@ mod tests {
             "not ours"
         );
         fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn lock_lives_until_backend_and_descendants_stop() {
+        use std::{thread, time::{Duration, Instant}};
+        let binary = crate::runtime_tests::fixture().clone();
+        for cancelled in [false, true] {
+            let dir = std::env::temp_dir().join(format!("dcc-lock-child-{}-{}-{cancelled}",
+                std::process::id(), contract::now_ms()));
+            fs::create_dir(&dir).unwrap();
+            let path = dir.join("owned.lock");
+            let ready = dir.join("ready"); let release = dir.join("release");
+            let finished = dir.join("finished"); let late = dir.join("late-child-write");
+            let cancel = dir.join("cancel");
+            let lock = acquire_lock(&path, "live-backend").unwrap();
+            let program = binary.clone(); let work = dir.clone();
+            let args = vec!["lease".into(), ready.to_string_lossy().into_owned(),
+                release.to_string_lossy().into_owned(), finished.to_string_lossy().into_owned(),
+                late.to_string_lossy().into_owned()];
+            let worker = thread::spawn(move || {
+                let _lock = lock;
+                let mut limits = contract::Limits::inspection(); limits.timeout_secs = 10;
+                process::run(&program, &args, &limits, &work.join("log"), None, Some(&work.join("cancel")))
+            });
+            let deadline = Instant::now() + Duration::from_secs(8);
+            while !ready.exists() && Instant::now() < deadline { thread::sleep(Duration::from_millis(5)); }
+            assert!(ready.exists(), "Backend did not start");
+            assert!(matches!(acquire_lock(&path,"concurrent"),Err(e) if e.code=="OUTPUT_LOCKED"));
+            if cancelled { fs::write(&cancel, "cancel").unwrap(); }
+            else { fs::write(&release, "release").unwrap(); }
+            let result = worker.join().unwrap();
+            if cancelled { assert_eq!(result.unwrap_err().code, "CANCELLED"); }
+            else { result.unwrap(); }
+            let pid = fs::read_to_string(&ready).unwrap().parse().unwrap();
+            assert!(process::process_identity(pid).is_none(), "Backend still alive at lock handoff");
+            let recovered = acquire_lock(&path, "next-owner").unwrap();
+            fs::write(&release, "release").unwrap();
+            thread::sleep(Duration::from_secs(3));
+            assert_eq!(finished.exists(), !cancelled);
+            assert!(!late.exists(), "Old descendant wrote after lock handoff");
+            drop(recovered);
+            fs::remove_dir_all(dir).unwrap();
+        }
     }
     #[test]
     fn malformed_exr_header_is_rejected() {

@@ -1,6 +1,6 @@
 use crate::{contract::{self, Limits}, process};
 use std::{fs, path::PathBuf, process::Command, sync::OnceLock, thread, time::{Duration, Instant}};
-fn fixture() -> &'static PathBuf {
+pub(crate) fn fixture() -> &'static PathBuf {
     static BIN: OnceLock<PathBuf> = OnceLock::new();
     BIN.get_or_init(|| {
         let dir=std::env::temp_dir().join(format!("dcc-native-fixture-{}",std::process::id()));

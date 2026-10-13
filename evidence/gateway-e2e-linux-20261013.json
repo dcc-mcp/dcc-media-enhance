@@ -1,0 +1,130 @@
+{
+  "core_version": "0.20.44",
+  "native_binary_sha256": "d78526dae1291d65ea3c88d19d318f52082b08c5f5c696e84bece074a69af0f6",
+  "scope": "Linux isolated loopback gateway; real CLI/SDK/FFmpeg; no deployed user host",
+  "calls": [
+    {
+      "label": "inventory",
+      "exit_code": 0,
+      "control_route": null,
+      "gateway_stats_recorded": null
+    },
+    {
+      "label": "search",
+      "exit_code": 0,
+      "control_route": null,
+      "gateway_stats_recorded": null
+    },
+    {
+      "label": "load",
+      "exit_code": 0,
+      "control_route": null,
+      "gateway_stats_recorded": null
+    },
+    {
+      "label": "describe_inspect",
+      "exit_code": 0,
+      "control_route": null,
+      "gateway_stats_recorded": null
+    },
+    {
+      "label": "describe_execute",
+      "exit_code": 0,
+      "control_route": null,
+      "gateway_stats_recorded": null
+    },
+    {
+      "label": "describe_cancel",
+      "exit_code": 0,
+      "control_route": null,
+      "gateway_stats_recorded": null
+    },
+    {
+      "label": "capabilities",
+      "exit_code": 0,
+      "control_route": "gateway",
+      "gateway_stats_recorded": true
+    },
+    {
+      "label": "plan",
+      "exit_code": 0,
+      "control_route": "gateway",
+      "gateway_stats_recorded": true
+    },
+    {
+      "label": "resize",
+      "exit_code": 0,
+      "control_route": "gateway",
+      "gateway_stats_recorded": true
+    },
+    {
+      "label": "completed_status",
+      "exit_code": 0,
+      "control_route": "gateway",
+      "gateway_stats_recorded": true
+    },
+    {
+      "label": "submit_cancel_job",
+      "exit_code": 0,
+      "control_route": "gateway",
+      "gateway_stats_recorded": true
+    },
+    {
+      "label": "running_status",
+      "exit_code": 0,
+      "control_route": "gateway",
+      "gateway_stats_recorded": true
+    },
+    {
+      "label": "cancel",
+      "exit_code": 0,
+      "control_route": "gateway",
+      "gateway_stats_recorded": true
+    },
+    {
+      "label": "cancelled_status",
+      "exit_code": 0,
+      "control_route": "gateway",
+      "gateway_stats_recorded": true
+    },
+    {
+      "label": "core_job_status",
+      "exit_code": 1,
+      "control_route": "gateway",
+      "gateway_stats_recorded": true
+    }
+  ],
+  "cli_version": "dcc-mcp-cli 0.20.44",
+  "wire_annotations_verified": true,
+  "resize": {
+    "dimensions": {
+      "width": 16,
+      "height": 16
+    },
+    "source_retained": true,
+    "core_wait_completed": true,
+    "output_sha256": "4ecd45f9ab1db7989ea73ed5e0a7bd7ea346995b391eaf4312189d4c7badbc22"
+  },
+  "cancellation": {
+    "native_status": "cancelled",
+    "core_status": "completed",
+    "no_output": true,
+    "source_retained": true,
+    "explicit_media_cancel": true,
+    "media_error": "CANCELLED",
+    "native_exit_code": 5,
+    "core_poll_cli_exit_code": 1
+  },
+  "success": true,
+  "cleanup": {
+    "all_owned_processes_stopped": true,
+    "exit_codes": [
+      0,
+      0
+    ],
+    "listeners_closed": true
+  },
+  "skill_tools_sha256": "fb377ef4d5797049563ec8e26faf1802c1a43daee9e651428b524dc1680cc5f2",
+  "test_source_sha256": "64d31f1953e2ad369cd3ceb0a6fa049f45c5f2942d98d870b0a99d8efd2fd64c",
+  "date_utc": "2026-10-13"
+}

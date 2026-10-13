@@ -1,10 +1,25 @@
 """Validate private skill discovery and the real CLI through the released Core SDK."""
 import argparse,hashlib,importlib.metadata,json,os,subprocess,sys,tempfile,threading,time
 from pathlib import Path
-from dcc_mcp_core import CancelToken, HostExecutionBridge, parse_skill_md, scan_skill_paths
+from dcc_mcp_core import CancelToken, HostExecutionBridge, SkillCatalog, ToolRegistry, parse_skill_md, scan_skill_paths
 p=argparse.ArgumentParser();p.add_argument('--binary',required=True,type=Path);a=p.parse_args();binary=a.binary.resolve()
 skill=Path('skill/media-enhance').resolve()
 metadata=parse_skill_md(str(skill));assert metadata and metadata.name=='media-enhance'
+# Inspect declarations after the actual Core parser/registration path. Flow YAML
+# may silently turn an unquoted comma into an extra property, and unknown flat
+# annotation names otherwise silently disappear from the callable tool contract.
+registry=ToolRegistry();catalog=SkillCatalog(registry)
+assert set(catalog.load_skill_object(metadata))=={'media_enhance__inspect','media_enhance__execute','media_enhance__cancel'}
+for name,read_only,idempotent in [('inspect',True,True),('execute',False,False),('cancel',False,True)]:
+    action=registry.get_action('media_enhance__'+name)
+    assert action['annotations']==dict(read_only_hint=read_only,destructive_hint=False,idempotent_hint=idempotent,open_world_hint=False)
+    properties=action['input_schema']['properties']
+    assert set(properties)=={'command','path','timeout_secs'}
+    assert set(properties['command'])=={'type','enum'}
+    assert set(properties['path'])=={'type','description'}
+    assert set(properties['timeout_secs'])=={'type','minimum','maximum','default'}
+assert registry.get_action('media_enhance__inspect')['input_schema']['properties']['path']['description'].endswith('capabilities, doctor and schema.')
+
 assert any(Path(path).resolve()==skill for path in scan_skill_paths(extra_paths=[str(skill.parent)],dcc_name='python'))
 env=dict(os.environ,DCC_MEDIA_ENHANCE_BIN=str(binary),DCC_MEDIA_ENHANCE_SHA256=hashlib.sha256(binary.read_bytes()).hexdigest())
 def run(script,params,environment=env):

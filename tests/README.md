@@ -38,3 +38,10 @@ sidecars and disguised ffconcat input. The cancellation test deliberately
 interposes one local sleeping ffprobe fixture after real enhancement to prove
 verification cancellation stops a batch. That fixture is not described as a real
 probe or media-quality test. No renderer, models or network are used.
+
+CI runs unit tests with `--release`, builds the optimized CLI with the locked
+dependencies, and runs both suites against that same release-profile executable
+before packaging it. The success path includes a completed manifest and verified
+cache; the live cancellation path must preserve the source, publish no output, and
+then complete a retry. A Cargo release profile is a build configuration, not a
+published GitHub release. Installed-Blender EXR acceptance remains a separate gate.

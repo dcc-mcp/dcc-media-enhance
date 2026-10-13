@@ -19,24 +19,25 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y ffmpeg
-      - name: Unit tests
-        run: cargo test --locked
-      - name: Build CLI
-        run: cargo build --locked
+      - name: Optimized unit tests
+        run: cargo test --locked --release
+      - name: Build optimized CLI
+        run: cargo build --locked --release
       - name: Installed CPU backend smoke tests
         run: |
           command -v ffmpeg
           command -v ffprobe
-          python3 tests/smoke.py --binary "$PWD/target/debug/dcc-media-enhance"
+          python3 tests/smoke.py --binary "$PWD/target/release/dcc-media-enhance"
       - name: Cache and cancellation safety regressions
-        run: python3 tests/risk_smoke.py --binary "$PWD/target/debug/dcc-media-enhance"
+        run: python3 tests/risk_smoke.py --binary "$PWD/target/release/dcc-media-enhance"
       - name: Prepare tested Linux preview artifact
         run: |
           mkdir -p target/linux-preview
-          cp target/debug/dcc-media-enhance LICENSE THIRD_PARTY_NOTICES.md Cargo.lock target/linux-preview/
-          rustc --version --verbose > target/linux-preview/build-runtime.txt
+          cp target/release/dcc-media-enhance LICENSE THIRD_PARTY_NOTICES.md Cargo.lock target/linux-preview/
+          printf 'cargo_profile=release\nsource_commit=%s\n' "$GITHUB_SHA" > target/linux-preview/build-runtime.txt
+          rustc --version --verbose >> target/linux-preview/build-runtime.txt
           ldd --version | head -n 1 >> target/linux-preview/build-runtime.txt
-          sha256sum target/linux-preview/dcc-media-enhance > target/linux-preview/SHA256SUMS
+          (cd target/linux-preview && sha256sum dcc-media-enhance > SHA256SUMS)
           SYSROOT="$(rustc --print sysroot)"
           for NAME in COPYRIGHT-library.html COPYRIGHT.html LICENSE-APACHE LICENSE-MIT; do
             if test -f "$SYSROOT/share/doc/rust/$NAME"; then

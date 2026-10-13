@@ -4,7 +4,9 @@ CI executes each release binary on its own OS and architecture. A compiled binar
 alone is never counted as a runtime pass. The matrix is Linux x86_64 (Ubuntu
 24.04), Windows x86_64 (Server 2022), macOS x86_64 and macOS ARM64 (macOS 15).
 No Windows ARM64, Linux ARM64, universal macOS binary, old-glibc compatibility,
-macOS notarization, or Windows signing is claimed.
+macOS notarization, or Windows signing is claimed. Windows builds statically link
+the MSVC CRT and packaging rejects an external VCRUNTIME/MSVCP/UCRT DLL dependency;
+OS-provided Windows system DLLs remain required. No redistributable installer is run.
 
 | Boundary | Linux | Windows | macOS |
 |---|---|---|---|

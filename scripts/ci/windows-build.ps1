@@ -1,4 +1,6 @@
 $ErrorActionPreference = 'Stop'
+# Agent distributions must not silently depend on a preinstalled VC runtime.
+$env:RUSTFLAGS = '-C target-feature=+crt-static'
 $selection = @('--dir', $env:DCC_MEDIA_MSVC_KIT_DIR, '--arch', 'x64', '--host-arch', 'x64', '--msvc-version', $env:DCC_MEDIA_MSVC_VERSION, '--sdk-version', $env:DCC_MEDIA_SDK_VERSION)
 $report = & $env:DCC_MEDIA_MSVC_KIT doctor @selection --compile --format json
 if ($LASTEXITCODE -ne 0) { throw 'Pinned msvc-kit doctor failed; no fallback compiler is permitted.' }

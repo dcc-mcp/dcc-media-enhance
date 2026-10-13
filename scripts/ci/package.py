@@ -1,5 +1,5 @@
 """Package native-tested executables, pinned notices, skill and provenance."""
-import argparse,hashlib,json,os,platform,shutil,subprocess,tomllib,zipfile
+import argparse,hashlib,json,os,platform,shutil,struct,subprocess,tomllib,zipfile
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--binary',required=True,type=Path);p.add_argument('--platform',required=True);p.add_argument('--target',required=True);a=p.parse_args()
 binary=a.binary.resolve();v=json.loads(subprocess.check_output([str(binary),'--version'],text=True))
@@ -19,12 +19,32 @@ for entry in notices.glob('*'):
 if (notices/'licenses').is_dir():shutil.copytree(notices/'licenses',license_dir/'licenses')
 assert list(license_dir.glob('COPYRIGHT*')),'Missing Rust standard-library copyright notices'
 assert list(license_dir.glob('LICENSE*')),'Missing Rust toolchain license texts'
+def pe_imports(data):
+    assert data[:2] == b'MZ', 'Windows artifact is not PE'
+    pe=struct.unpack_from('<I',data,0x3c)[0]
+    machine,count=struct.unpack_from('<HH',data,pe+4)
+    size=struct.unpack_from('<H',data,pe+20)[0]; optional=pe+24
+    assert machine == 0x8664 and struct.unpack_from('<H',data,optional)[0] == 0x20b
+    sections=[struct.unpack_from('<IIII',data,optional+size+40*i+8) for i in range(count)]
+    def offset(rva):
+        for vsize,virtual,rsize,raw in sections:
+            if virtual <= rva < virtual+max(vsize,rsize): return raw+rva-virtual
+        raise ValueError('PE directory outside sections')
+    rva,_=struct.unpack_from('<II',data,optional+120)
+    pos=offset(rva); imports=[]
+    while any(data[pos:pos+20]):
+        at=offset(struct.unpack_from('<I',data,pos+12)[0])
+        imports.append(data[at:data.index(0,at)].decode('ascii'))
+        pos+=20
+    return imports
+imports=pe_imports(binary.read_bytes()) if a.platform.startswith('windows-') else []
+assert not any(name.lower().startswith(('vcruntime','msvcp','msvcr','api-ms-win-crt-')) for name in imports), ('Non-system VC runtime dependency',imports)
 sha=hashlib.sha256(binary.read_bytes()).hexdigest()
 metadata=dict(**v,platform=a.platform,binary=binary.name,binary_sha256=sha,
     rustc=subprocess.check_output(['rustc','--version','--verbose'],text=True),runtime=platform.platform(),
     native_tests=['unit_process_tree','real_ffmpeg_smoke','json_contract','lifecycle_lock_cancel','core_skill_bridge'],
     verification_scope='CI native runner only; no end-user hardware or render/OIDN validation on Windows/macOS',
-    backends_bundled=False,models_bundled=False)
+    backends_bundled=False,models_bundled=False,windows_imported_dlls=imports,windows_crt='static' if imports else None)
 (stage/'build-manifest.json').write_text(json.dumps(metadata,indent=2)+'\n')
 files=sorted(p for p in stage.rglob('*') if p.is_file())
 (stage/'SHA256SUMS').write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(stage).as_posix()}\n' for p in files))

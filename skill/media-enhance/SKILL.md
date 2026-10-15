@@ -85,7 +85,7 @@ different, explicitly provisioned runtime.
 
 ## Existing dcc-mcp-cli integration
 
-Expose this private skill through an explicitly configured `DCC_MCP_SKILL_PATHS`
+Expose this repository-owned skill through an explicitly configured `DCC_MCP_SKILL_PATHS`
 root in the existing Python host. Configure `DCC_MEDIA_ENHANCE_BIN` as an absolute
 installed binary path and `DCC_MEDIA_ENHANCE_SHA256` to its verified digest in that
 host's environment. This repository never changes the global PATH or registers a

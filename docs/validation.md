@@ -1,7 +1,13 @@
-# Local validation report
+# Historical local validation report (0.1 preview)
 
 Initial tests: 2026-10-12. Consumer follow-up: 2026-10-13. Linux x86_64 CPU cloud host. This is a local preview build,
 not a published release or a quality/performance benchmark.
+
+This dated report describes the original 0.1 Linux preview, not the current
+0.2 native matrix. For current OS-specific CI execution and distribution limits,
+see [the native platform contract](platforms.md) and the checks for the exact
+commit being used. The measurements below are retained as historical evidence;
+they are not relabeled as tests of later binaries.
 
 ## Fixed tested CLI
 
@@ -101,9 +107,11 @@ is **unsent**. Lanczos resize remains separately named and is not substituted fo
 
 ## Remaining boundaries
 
-No standalone Rust/OIDN worker, released offline backend bundle, Windows/macOS CI,
-transparent/HDR-video support, streaming long-video verification, neural-quality
-benchmark or blanket DCC-host migration is claimed. Visual/reference quality
+The original 0.1 preview had no Windows/macOS CI; later native CLI/FFmpeg gates
+are documented separately in [the 0.2 platform contract](platforms.md). No
+standalone Rust/OIDN worker, released offline backend bundle, transparent/HDR-video
+support, streaming long-video verification, neural-quality benchmark or blanket
+DCC-host migration is claimed by this report. Visual/reference quality
 checks are `not_run` in manifests. The source repository, CLI, skill and job contract are preview work for review.
 No release, blanket host migration, or production-readiness claim is implied by
 this validation report.

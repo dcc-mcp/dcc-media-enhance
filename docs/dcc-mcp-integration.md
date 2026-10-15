@@ -1,18 +1,18 @@
-# Private dcc-mcp-cli integration
+# dcc-mcp-cli integration
 
 `dcc-mcp-cli` is shipped by `dcc-mcp/dcc-mcp-core`, not a second media server.
 This adapter reuses Core's existing skill catalog, typed tools, SDK result
 helpers, CLI search/describe/call path, async metadata and MCP Client transport.
 It adds no network listener, alternate MCP protocol, global PATH or host registry
-mutation. All media implementation and skill files stay in this private repo.
-No private source needs to be copied into the public Core repository.
+mutation. The media implementation and canonical skill are maintained in this
+separately versioned repository rather than duplicated in Core.
 
 The checked SDK baseline is dcc-mcp-core 0.20.44. Compatibility stays within
 `>=0.20.44,<0.21`; a later minor requires revalidation. CI pins the exact baseline
 wheel and verifies native catalog parsing, skill discovery, standard envelopes,
 binary-identity rejection and a real CLI run/status round trip on all four native
 platforms. A separate Linux gate runs the actual dcc-mcp-cli 0.20.44 through an
-isolated loopback gateway, discovers and loads the private Python skill, validates
+isolated loopback gateway, discovers and loads this repository's Python skill, validates
 wire schemas/annotations, and executes real FFmpeg resize plus explicit media
 cancellation. This does not claim installation into an existing user gateway or
 arbitrary DCC-host acceptance.
@@ -52,8 +52,8 @@ in PLATFORMS.md. Never equate a transport timeout with completed media processin
 - Core media skill examples: https://github.com/dcc-mcp/dcc-mcp-core/tree/v0.20.44/python/dcc_mcp_core/skills/media
 - Core async skill: https://github.com/dcc-mcp/dcc-mcp-core/tree/v0.20.44/examples/skills/async-render-example
 
-Public interface publication, catalog submission, and installation into an actual
-user DCC/gateway are separate actions; this change does none of them.
+Marketplace catalog submission and installation into an actual user DCC/gateway
+are separate actions; publishing this repository does not perform either one.
 
 
 Core 0.20.44's default subprocess script runner does not propagate its cancellation

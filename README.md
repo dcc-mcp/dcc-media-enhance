@@ -1,6 +1,6 @@
 # dcc-media-enhance
 
-A small, agent-first **orchestration CLI**, implemented in Rust. It calls mature
+A small, MIT-licensed, agent-first **orchestration CLI**, implemented in Rust. It calls mature
 installed media tools rather than reimplementing denoising algorithms or training
 another model. Jobs have explicit resource budgets, machine-readable results,
 source provenance, verified outputs, and resumable serial batches.
@@ -110,12 +110,15 @@ not artistic quality benchmarks. Manifests distinguish executed checks from
 `not_run`; enhanced derivatives are not evidence that previously unreadable detail
 was factual.
 
-This source tree is an initial local implementation with a locally compiled Linux preview binary. It has no published release,
-no prebundled third-party runtime/model, and no claim of Windows/macOS support.
-The local preview requires glibc 2.39+ and libgcc_s; older-distro distribution
-needs a separately built/tested baseline artifact. A Rust executable does not
-remove backend ABI, native-library, model-license or
-supply-chain obligations. Rust dependency notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The source and original adapter code are available under [MIT](LICENSE). No
+versioned release or prebundled third-party runtime/model is published. Native
+CI builds and executes the CLI and FFmpeg regression tests on the four targets
+listed below; that scope does not establish render/OIDN or neural-upscale support
+on every platform. The historical Linux preview described in the local validation
+report requires glibc 2.39+ and libgcc_s; older-distro distribution needs a
+separately built/tested baseline artifact. A Rust executable does not remove
+backend ABI, native-library, model-license or supply-chain obligations. Rust
+dependency notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 The wrapper's MIT license does not relicense FFmpeg,
 Blender, OIDN, ncnn, or model weights.
 
@@ -127,7 +130,7 @@ binary SHA-256, then use the executable by absolute path. No backend is bundled.
 `capabilities` gives the machine-readable CLI surface and platform limits.
 
 See [platforms and release workflow](docs/platforms.md) and
-[private dcc-mcp-cli integration](docs/dcc-mcp-integration.md).
+[dcc-mcp-cli integration](docs/dcc-mcp-integration.md).
 Windows/macOS cache reuse is deliberately disabled until full loader identity is
 verified. Real FFmpeg CI tests do not establish OIDN or neural-upscale support on
 those machines. Existing Linux render evidence remains scoped to that host.

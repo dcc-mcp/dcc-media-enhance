@@ -40,14 +40,14 @@ semantics are not validated. Unix staging mode is 0700.
 
 CI runs native process-tree, memory-observation, cancellation, locking, Unicode
 and space-path tests; real FFmpeg image/video/resize and source-retention tests;
-and the private Core skill bridge. CI does not install Blender or neural models,
+and the Core skill bridge. CI does not install Blender or neural models,
 so OIDN/render and neural-upscale quality on Windows/macOS remain unverified.
 The historical Linux render test does not establish those other platforms.
 
 ## CI / distribution
 
 Each main/PR build creates four independently tested zip artifacts for seven days.
-Archives contain the CLI, schemas, examples, private skill, build metadata, pinned
+Archives contain the CLI, schemas, examples, canonical skill, build metadata, pinned
 crate notices and the exact Rust toolchain notices. They contain no FFmpeg,
 Blender, weights, Microsoft toolchain files or user media. Inner SHA256SUMS covers
 archive files; the adjacent .sha256 covers the zip. Build metadata carries target,
@@ -63,6 +63,6 @@ check for that doctor; no global PATH, registry, SDK install or credentials chan
 Publishing a versioned GitHub Release is a separate maintainer action. After that
 explicit event, release.yml reruns native gates and attaches all four archives
 and their aggregate checksums without --clobber. It creates no tag or release and
-never changes the private repository's visibility. A tag/version mismatch or a
+never changes the repository's visibility. A tag/version mismatch or a
 failed platform gate prevents attachment. No release has been created merely by
 adding these workflows.

@@ -70,4 +70,6 @@ Before distributing an optional backend bundle, record source URL and revision,
 artifact SHA-256, model SHA-256, build flags, platform/CPU requirements, shared
 runtime dependencies, software AND weight licenses, third-party notices, SBOM,
 source-offer obligations where applicable, and actual regression evidence. No
-single-executable/zero-runtime or cross-platform guarantee has been validated.
+single-executable/zero-runtime backend bundle or cross-platform render/neural
+guarantee has been validated. Native CLI/FFmpeg CI coverage is documented in
+[the platform contract](platforms.md).

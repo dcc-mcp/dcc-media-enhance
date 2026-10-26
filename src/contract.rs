@@ -146,11 +146,11 @@ impl Job {
                     2,
                 ));
             }
-            for n in [&p.beauty, &p.albedo, &p.normal, &p.layer] {
-                if n.is_empty() || n.len() > 128 || n.chars().any(|c| c.is_control()) {
+            for (role, n) in [("beauty", &p.beauty), ("albedo", &p.albedo), ("normal", &p.normal), ("layer", &p.layer)] {
+                if (n.is_empty() && role != "layer") || n.len() > 128 || n.chars().any(|c| c.is_control()) {
                     return Err(Error::new(
                         "INVALID_PASSES",
-                        "Pass names must be nonempty, bounded and contain no control characters",
+                        "Pass names must be nonempty and bounded; only the root layer may be empty; control characters are forbidden",
                         2,
                     ));
                 }
@@ -283,6 +283,14 @@ mod tests {
         let mut job: Job = serde_json::from_str(include_str!("../examples/render.json")).unwrap();
         job.passes.as_mut().unwrap().normal = "Combined".into();
         assert!(matches!(job.validate(),Err(e) if e.code=="INVALID_PASSES"));
+    }
+    #[test]
+    fn accepts_unnamed_exr_layer_but_not_empty_passes() {
+        let mut job: Job = serde_json::from_str(include_str!("../examples/render.json")).unwrap();
+        job.passes.as_mut().unwrap().layer.clear();
+        assert!(job.validate().is_ok());
+        job.passes.as_mut().unwrap().beauty.clear();
+        assert!(job.validate().is_err());
     }
     #[test]
     fn hashing_honors_cancellation_before_publication() {

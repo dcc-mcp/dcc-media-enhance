@@ -1,5 +1,10 @@
 # Verification
 
+`python tests/test_blender_api_compat.py` checks legacy and Blender 5 compositor
+API branches without Blender. These are API fixtures, not native-render proof.
+Retained-EXR tests must separately verify the actual mapped beauty/albedo/normal
+pixels; a decoder succeeding is insufficient to prove the selected guides.
+
 `python3 tests/smoke.py --binary /absolute/path/to/dcc-media-enhance`
 
 Tests use actual installed CPU FFmpeg backends with original deterministic 32×24

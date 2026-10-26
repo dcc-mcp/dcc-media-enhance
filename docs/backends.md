@@ -22,6 +22,15 @@ scene's geometry during denoising. Blender is GPL software. Subprocess invocatio
 is not an exemption from redistribution obligations; no Blender is bundled here.
 Its actual OIDN version is not inferred from its Blender version.
 
+Blender 5 uses `Scene.compositing_node_group` and a Group Output; older Blender
+versions use `Scene.node_tree` and Composite. The adapter selects the supported
+API without changing the denoising backend. EXR pass mappings remain explicit;
+an empty `passes.layer` selects an unnamed root layer (for example, Arnold EXRs).
+This root-layer route requires root RGBA plus flat AOV channel names and rejects
+files mixing in other named layers. Beauty/albedo/normal socket roles remain
+distinct and type-checked. Blender 5's denoise and alpha settings use explicit
+input sockets; the legacy property path is retained for older versions.
+
 ## Images and video
 
 [FFmpeg filter documentation](https://ffmpeg.org/ffmpeg-filters.html) documents

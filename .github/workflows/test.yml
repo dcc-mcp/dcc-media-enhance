@@ -74,6 +74,7 @@ jobs:
         shell: bash
         run: |
           python tests/test_pe_checks.py
+          python tests/test_blender_api_compat.py
           python tests/contract_smoke.py --binary "target/release/${{ matrix.binary }}"
           python tests/smoke.py --binary "target/release/${{ matrix.binary }}"
           python tests/lifecycle_smoke.py --binary "target/release/${{ matrix.binary }}"

@@ -99,7 +99,8 @@
         },
         "layer": {
           "type": "string",
-          "minLength": 1,
+          "minLength": 0,
+          "description": "Exact EXR layer name; empty string selects the unnamed root layer.",
           "maxLength": 128
         }
       }
